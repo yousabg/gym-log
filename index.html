@@ -275,7 +275,46 @@ function applyTheme(){
   document.querySelectorAll('meta[name=theme-color]').forEach(m=>{m.content=dark?'#000000':'#f2f2f7';m.removeAttribute('media')});
 }
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',applyTheme);
-function save(){localStorage.setItem(KEY,JSON.stringify(S))}
+// Only real changes bump the timestamp, so taps that just navigate never overwrite newer cloud data.
+let lastSaved=null;
+function save(){
+  const now=JSON.stringify(cloudData());
+  if(now!==lastSaved){if(lastSaved!==null)S.updated=Date.now();lastSaved=now;schedulePush()}
+  localStorage.setItem(KEY,JSON.stringify(S));
+}
+
+/* ---------- cloud sync ---------- */
+// One Firestore document per Google account holds everything; the newest copy wins.
+let user=null,pushT=null;
+const cloudData=()=>{const d={...S};delete d.theme;delete d.syncUid;delete d.updated;return d};
+function schedulePush(){if(!user||!window.cloud)return;clearTimeout(pushT);pushT=setTimeout(pushNow,1200)}
+async function pushNow(){
+  clearTimeout(pushT);pushT=null;if(!user)return;
+  try{await cloud.push(user.uid,JSON.stringify(cloudData()),S.updated||Date.now())}catch(e){console.warn(e)}
+}
+function adopt(r){
+  const d=JSON.parse(r.data);
+  localStorage.setItem(KEY,JSON.stringify({...d,theme:S.theme,syncUid:user.uid,updated:r.updated}));
+  S=load();lastSaved=JSON.stringify(cloudData());viewDayId=null;openEx=noteOpen=null;
+}
+async function pull(){
+  if(!user||pushT)return;
+  let r;try{r=await cloud.pull(user.uid)}catch(e){return}
+  if(!user||pushT)return;
+  const first=S.syncUid!==user.uid;
+  if(first)S.syncUid=user.uid;
+  if(!r){S.updated=S.updated||Date.now();localStorage.setItem(KEY,JSON.stringify(S));pushNow();return}
+  let useCloud=r.updated>(S.updated||0);
+  if(first&&(S.sessions.length||S.routines.length)){
+    const n=JSON.parse(r.data).sessions?.length||0;
+    useCloud=await ask({title:'Which data should we keep?',msg:`Your account has ${plural(n,'workout')} saved. This device has ${plural(S.sessions.length,'workout')}. The other copy will be replaced.`,ok:'Use account',cancel:'Use this device'});
+    if(!useCloud)S.updated=Date.now();
+  }else if(first)useCloud=true;
+  if(useCloud)adopt(r);
+  else{localStorage.setItem(KEY,JSON.stringify(S));if(r.updated<S.updated)pushNow()}
+  render();
+}
+window.onCloudUser=u=>{user=u;render();if(u)pull()};
 function toast(t){const el=$('#toast');el.innerHTML=ic('check')+esc(t);el.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>el.classList.remove('show'),1800)}
 function move(arr,i,d){const j=i+d;if(j<0||j>=arr.length)return;[arr[i],arr[j]]=[arr[j],arr[i]]}
 function ask({title,msg='',ok='OK',cancel='Cancel',danger=false}){
@@ -538,12 +577,17 @@ function renderSettings(){
     <div class="section-title">Rest timer</div><div class="group"><div class="cell static">
       <div class="seg seg-full">${[[0,'Off'],[60,'1:00'],[90,'1:30'],[120,'2:00'],[180,'3:00']].map(([v,l])=>`<button data-a="rest" data-s="${v}" class="${restSec()===v?'on':''}">${l}</button>`).join('')}</div></div></div>
     <p class="footnote">Starts when you check off a set. Turn your ringer on to hear the alert.</p>
+    <div class="section-title">Account</div><div class="group">${user?`
+      <div class="cell static"><div class="cell-main"><div class="cell-title">Google</div></div><span class="cell-value">${esc(user.email||'Signed in')}</span></div>
+      <button class="cell action" data-a="signout">Sign out</button>`:`
+      <button class="cell action" data-a="signin">Sign in with Google</button>`}</div>
+    <p class="footnote">${user?'Your workouts save to your account automatically. Sign in on any device to get them back.':'Sign in to back up your workouts and use them on any device.'}</p>
     <div class="section-title">Backup</div><div class="group">
       <button class="cell action" data-a="export">Export backup</button>
       <button class="cell action" data-a="import">Import backup</button>
       <button class="cell action" data-a="copycode">Copy transfer code</button>
       <button class="cell action" data-a="pastecode">Paste transfer code</button></div>
-    <p class="footnote">Your data is stored only on this device. Export a backup from time to time and keep it in Files or iCloud Drive. To move your data to another phone or app, copy a transfer code there and paste it here.</p>
+    <p class="footnote">${user?'You can also export a file now and then to keep in Files or iCloud Drive.':'Your data is stored only on this device. Export a backup from time to time and keep it in Files or iCloud Drive. To move your data to another phone or app, copy a transfer code there and paste it here.'}</p>
     <div class="section-title">Data</div><div class="group">
       <div class="cell static"><div class="cell-main"><div class="cell-title">Workouts logged</div></div><span class="cell-value">${S.sessions.length}</span></div>
       <button class="cell destructive" data-a="erase">Erase all data</button></div>`});
@@ -863,6 +907,13 @@ document.addEventListener('click',async e=>{
     case 'bwdel':S.weights=S.weights.filter(x=>x.id!==b.closest('[data-bw]').dataset.bw);openWeights();break;
     case 'units':S.units=b.dataset.u;break;
     case 'theme':S.theme=b.dataset.t;applyTheme();break;
+    case 'signin':
+      if(!window.cloud){await ask({title:'Can\'t connect',msg:'Check your internet connection and try again.',cancel:null});return}
+      try{await cloud.signIn()}catch(e){if(e.code!=='auth/popup-closed-by-user'&&e.code!=='auth/cancelled-popup-request')await ask({title:'Sign in failed',msg:e.message||String(e),cancel:null})}
+      return;
+    case 'signout':
+      if(!await ask({title:'Sign out?',msg:'Your data stays on this device. New changes will not be backed up until you sign in again.',ok:'Sign Out'}))return;
+      await pushNow();cloud.signOut();return;
     case 'export':exportData();return;
     case 'import':$('#imp').click();return;
     case 'copycode':
@@ -895,9 +946,30 @@ if(location.hash.startsWith('#import=')){
 }
 applyTheme();
 navigator.storage?.persist?.();
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)render()});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)pushNow();else{render();pull()}});
 if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js');
+lastSaved=JSON.stringify(cloudData());
 render();
+</script>
+<script type="module">
+const B='https://www.gstatic.com/firebasejs/10.12.2/';
+try{
+  const [{initializeApp},A,F]=await Promise.all(['app','auth','firestore'].map(n=>import(`${B}firebase-${n}.js`)));
+  const app=initializeApp({apiKey:'AIzaSyBap3IRsyvLrDXQc7kDR_Rj6M88wginblY',authDomain:'gym-log-yousab.firebaseapp.com',projectId:'gym-log-yousab',appId:'1:365943641389:web:aded6ffb3c0032d2c62fa4'});
+  const auth=A.getAuth(app),db=F.getFirestore(app),ref=uid=>F.doc(db,'users',uid);
+  window.cloud={
+    async signIn(){
+      const p=new A.GoogleAuthProvider();p.setCustomParameters({prompt:'select_account'});
+      try{await A.signInWithPopup(auth,p)}
+      catch(e){if(e.code==='auth/popup-blocked'||e.code==='auth/operation-not-supported-in-this-environment')await A.signInWithRedirect(auth,p);else throw e}
+    },
+    signOut:()=>A.signOut(auth),
+    async pull(uid){const d=await F.getDoc(ref(uid));return d.exists()?d.data():null},
+    push:(uid,data,updated)=>F.setDoc(ref(uid),{data,updated}),
+  };
+  A.getRedirectResult(auth).catch(()=>{});
+  A.onAuthStateChanged(auth,u=>window.onCloudUser(u));
+}catch(e){console.warn('Cloud sync unavailable',e)}
 </script>
 </body>
 </html>
