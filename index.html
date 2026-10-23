@@ -65,8 +65,6 @@ h1.large{font-size:34px;font-weight:700;letter-spacing:.01em;margin:0;line-heigh
 .meta{color:var(--muted);font-size:15px;margin:2px 0 0}
 .round-btn{width:34px;height:34px;border-radius:50%;background:var(--fill);color:var(--accent);display:grid;place-items:center;flex:none}
 .round-btn .ic{width:19px;height:19px}
-.last{background:var(--fill);border-radius:12px;padding:10px 12px;margin-top:12px}
-.last-label{font-size:13px;color:var(--muted);font-weight:500}
 .set-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .set-chip{background:var(--card);border-radius:8px;padding:3px 8px;font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
 .card .note{font-size:14px;color:var(--muted);margin-top:10px}
@@ -77,6 +75,7 @@ h1.large{font-size:34px;font-weight:700;letter-spacing:.01em;margin:0;line-heigh
 .snum{color:var(--muted);font-weight:600;text-align:center;font-variant-numeric:tabular-nums}
 .field{width:100%;min-width:0;height:46px;border:none;border-radius:12px;background:var(--fill);text-align:center;font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;outline:none;transition:background .15s}
 .field:focus{box-shadow:inset 0 0 0 2px var(--accent)}
+.field.prefill{color:var(--muted);font-weight:500}
 .field::placeholder{color:var(--faint);font-weight:500}
 .check{height:46px;border-radius:12px;background:var(--fill);color:var(--faint);display:grid;place-items:center;transition:background .15s,color .15s}
 .srow.done .check{background:var(--accent);color:var(--on-accent)}
@@ -421,7 +420,7 @@ function renderToday(){
     body+=`<div class="progress"><div class="progress-track"><div class="progress-fill" style="width:${n?done/n*100:0}%"></div></div>
       <div class="progress-label">${done} of ${plural(n,'exercise')} done</div></div>`;
   }else if(!S.tipSeen&&day.exercises.length){
-    body+=`<div class="tip"><div class="tip-icon">${ic('check')}</div><div class="tip-text"><b>Quick logging</b><br>Tap the circle to check off an exercise with last time's numbers, or tap the name to enter new ones. Everything saves as you go.</div>
+    body+=`<div class="tip"><div class="tip-icon">${ic('check')}</div><div class="tip-text"><b>Quick logging</b><br>Tap the circle to check off an exercise with last time's numbers, or tap the name to change them. Everything saves as you go.</div>
       <button class="text-btn" data-a="tipok">Got it</button></div>`;
   }
   if(!day.exercises.length)body+=empty('routine','No exercises yet','Add exercises to this day in your routine.',[['Add exercises','editday','primary']]);
@@ -438,15 +437,15 @@ function renderToday(){
       continue;
     }
     body+=`<section class="card open" data-ex="${ex.id}">
-      <div class="ex-top">${statusBtn(ex,done,sets.length)}<button class="ex-head-btn" data-a="toggleex" aria-label="Collapse"><h3>${esc(ex.name||'Untitled')}</h3><p class="meta">${target(ex)}</p></button>
+      <div class="ex-top">${statusBtn(ex,done,sets.length)}<button class="ex-head-btn" data-a="toggleex" aria-label="Collapse"><h3>${esc(ex.name||'Untitled')}</h3><p class="meta">${target(ex)}${last?` · Last ${fmtShort(last.date)}`:''}</p></button>
         <button class="round-btn" data-a="exhist" aria-label="Exercise history">${ic('history')}</button>
         <button class="round-btn" data-a="toggleex" aria-label="Collapse">${ic('up')}</button></div>
-      <div class="last">${last?`<div class="last-label">Last time, ${fmtShort(last.date)}</div>${chips(last.sets)}${noteLine(last.note)}`:'<div class="last-label">First time logging this exercise</div>'}</div>
+      ${last?.note?`<div class="note">Last time: ${esc(last.note)}</div>`:''}
       ${ex.notes?`<div class="note">${esc(ex.notes)}</div>`:''}
       <div class="grid grid-head"><span>Set</span><span>${S.units}</span><span>Reps</span><span></span></div>
       ${sets.map((s,i)=>`<div class="grid srow${s.done?' done':''}"><span class="snum">${i+1}</span>
-          <input class="field" inputmode="decimal" data-f="w" data-i="${i}" value="${esc(s.w)}" placeholder="${esc(wHint(sets,i,last))}" aria-label="Set ${i+1} weight">
-          <input class="field" inputmode="numeric" data-f="r" data-i="${i}" value="${esc(s.r)}" placeholder="${esc(rHint(i,last,ex))}" aria-label="Set ${i+1} reps">
+          <input class="field${s.w===''&&!s.done?' prefill':''}" inputmode="decimal" data-f="w" data-i="${i}" value="${esc(s.w!==''?s.w:wHint(sets,i,last))}" aria-label="Set ${i+1} weight">
+          <input class="field${s.r===''&&!s.done?' prefill':''}" inputmode="numeric" data-f="r" data-i="${i}" value="${esc(s.r!==''?s.r:rHint(i,last,ex))}" aria-label="Set ${i+1} reps">
           <button class="check" data-a="done" data-i="${i}" aria-label="Complete set ${i+1}">${ic('check')}</button></div>`).join('')}
       <div class="ex-actions"><button class="text-btn" data-a="addset">${ic('plus')}Add set</button>
         <button class="text-btn" data-a="rmset"${sets.length>1?'':' disabled'}>${ic('minus')}Remove set</button>
@@ -716,11 +715,14 @@ main.addEventListener('input',e=>{
   if(t.dataset.note)x.note=t.value;else x.sets[+t.dataset.i][t.dataset.f]=t.value.trim();
   if(t.dataset.f==='w'){
     const card=t.closest('[data-ex]'),last=lastFor(currentDay().exercises.find(e=>e.id===card.dataset.ex));
-    card.querySelectorAll('[data-f=w]').forEach(el=>{const i=+el.dataset.i;if(i>+t.dataset.i)el.placeholder=wHint(x.sets,i,last)});
+    card.querySelectorAll('[data-f=w]').forEach(el=>{const i=+el.dataset.i;if(i>+t.dataset.i&&x.sets[i].w==='')el.value=wHint(x.sets,i,last)});
   }
+  if(t.dataset.f)t.classList.remove('prefill');
   syncSession();save();
   const db=$('[data-a=discard]');if(db)db.hidden=false;
 });
+
+main.addEventListener('focusin',e=>{const t=e.target;if(t.classList.contains('field'))setTimeout(()=>t.setSelectionRange(0,t.value.length),0)});
 
 document.addEventListener('click',async e=>{
   const b=e.target.closest('[data-a]');
@@ -748,8 +750,8 @@ document.addEventListener('click',async e=>{
       else{
         const i=+b.dataset.i,s=sets[i],card=b.closest('[data-ex]');
         if(!s.done){
-          if(s.w==='')s.w=card.querySelector(`[data-f=w][data-i="${i}"]`).placeholder;
-          if(s.r==='')s.r=card.querySelector(`[data-f=r][data-i="${i}"]`).placeholder;
+          if(s.w==='')s.w=card.querySelector(`[data-f=w][data-i="${i}"]`).value;
+          if(s.r==='')s.r=card.querySelector(`[data-f=r][data-i="${i}"]`).value;
         }
         s.done=!s.done;
         if(s.done){
