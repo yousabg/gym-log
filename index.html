@@ -113,6 +113,12 @@ h1.large{font-size:34px;font-weight:700;letter-spacing:.01em;margin:0;line-heigh
 
 /* empty */
 .empty{text-align:center;padding:56px 12px 8px}
+.tabbar[hidden]{display:none}
+.gate{min-height:80vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 12px}
+.gate-icon{width:88px;height:88px;border-radius:20px;margin-bottom:20px}
+.gate h1{font-size:30px;font-weight:700;margin:0 0 8px}
+.gate p{color:var(--muted);margin:0 0 28px;max-width:300px;line-height:1.4}
+.gate .btn{width:100%;max-width:320px}
 .empty-icon{width:64px;height:64px;border-radius:18px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;margin:0 auto 18px}
 .empty-icon .ic{width:32px;height:32px}
 .empty h2{font-size:22px;margin:0 0 8px}
@@ -289,8 +295,8 @@ let user=null,pushT=null;
 const cloudData=()=>{const d={...S};delete d.theme;delete d.syncUid;delete d.updated;return d};
 function schedulePush(){if(!user||!window.cloud)return;clearTimeout(pushT);pushT=setTimeout(pushNow,1200)}
 async function pushNow(){
-  clearTimeout(pushT);pushT=null;if(!user)return;
-  try{await cloud.push(user.uid,JSON.stringify(cloudData()),S.updated||Date.now())}catch(e){console.warn(e)}
+  clearTimeout(pushT);pushT=null;if(!user)return false;
+  try{await cloud.push(user.uid,JSON.stringify(cloudData()),S.updated||Date.now());return true}catch(e){console.warn(e);return false}
 }
 function adopt(r){
   const d=JSON.parse(r.data);
@@ -314,7 +320,8 @@ async function pull(){
   else{localStorage.setItem(KEY,JSON.stringify(S));if(r.updated<S.updated)pushNow()}
   render();
 }
-window.onCloudUser=u=>{user=u;render();if(u)pull()};
+window.onCloudUser=u=>{user=u;window.cloudState=u?'in':'out';render();if(u)pull()};
+window.cloudState='loading';
 function toast(t){const el=$('#toast');el.innerHTML=ic('check')+esc(t);el.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>el.classList.remove('show'),1800)}
 function move(arr,i,d){const j=i+d;if(j<0||j>=arr.length)return;[arr[i],arr[j]]=[arr[j],arr[i]]}
 function ask({title,msg='',ok='OK',cancel='Cancel',danger=false}){
@@ -596,7 +603,16 @@ function renderSettings(){
 const OLD_HOST=location.protocol==='http:'&&!/^(localhost|127\.)/.test(location.hostname);
 const movedBanner=()=>OLD_HOST?`<div class="tip move"><div class="tip-text"><b>Gym Log has moved</b><br>1. Tap Copy.<br>2. Open <b>${'https://yousabg.github.io/gym-log/'.replace('https://','')}</b> and tap Paste transfer code in Settings.</div><button class="text-btn" data-a="copycode">Copy</button></div>`:'';
 const TABS=[['today','Today'],['routine','Routines'],['history','History'],['settings','Settings']];
+// An account is required. Someone who signed in before can keep using the app offline while sign-in loads.
+function renderGate(){
+  const wait=window.cloudState==='loading';
+  return `<div class="gate"><img class="gate-icon" src="icon-180.png" alt=""><h1>Gym Log</h1>
+    <p>${window.cloudState==='failed'?'Can\'t connect right now. Check your internet connection, then try again.':'Sign in to save your workouts to your account and use them on any device.'}</p>
+    <button class="btn primary" data-a="${window.cloudState==='failed'?'reload':'signin'}"${wait?' disabled':''}>${window.cloudState==='failed'?'Try Again':wait?'Loading':'Sign in with Google'}</button></div>`;
+}
 function render(){
+  if(!user&&!(S.syncUid&&window.cloudState!=='out')){$('#tabbar').hidden=true;main.innerHTML=renderGate();return}
+  $('#tabbar').hidden=false;
   expireDraft();
   $('#tabbar').innerHTML=TABS.map(([k,l])=>`<button data-a="tab" data-tab="${k}" class="${tab===k?'on':''}">${ic(k)}${l}</button>`).join('');
   main.innerHTML=({today:renderToday,routine:renderRoutine,history:renderHistory,settings:renderSettings})[tab]();
@@ -912,8 +928,11 @@ document.addEventListener('click',async e=>{
       try{await cloud.signIn()}catch(e){if(e.code!=='auth/popup-closed-by-user'&&e.code!=='auth/cancelled-popup-request')await ask({title:'Sign in failed',msg:e.message||String(e),cancel:null})}
       return;
     case 'signout':
-      if(!await ask({title:'Sign out?',msg:'Your data stays on this device. New changes will not be backed up until you sign in again.',ok:'Sign Out'}))return;
-      await pushNow();cloud.signOut();return;
+      if(!await ask({title:'Sign out?',msg:'Your workouts stay saved in your account. Sign in again to see them.',ok:'Sign Out'}))return;
+      if(!await pushNow()){await ask({title:'Can\'t sign out yet',msg:'Your latest changes have not been saved to your account. Connect to the internet and try again.',cancel:null});return}
+      S={units:S.units,theme:S.theme,routines:[],activeId:null,sessions:[],weights:[],draft:null};localStorage.setItem(KEY,JSON.stringify(S));lastSaved=JSON.stringify(cloudData());
+      tab='today';viewDayId=routeRoutine=routeDay=null;cloud.signOut();return;
+    case 'reload':location.reload();return;
     case 'export':exportData();return;
     case 'import':$('#imp').click();return;
     case 'copycode':
@@ -969,7 +988,7 @@ try{
   };
   A.getRedirectResult(auth).catch(()=>{});
   A.onAuthStateChanged(auth,u=>window.onCloudUser(u));
-}catch(e){console.warn('Cloud sync unavailable',e)}
+}catch(e){console.warn('Cloud sync unavailable',e);window.cloudState='failed';render()}
 </script>
 </body>
 </html>
