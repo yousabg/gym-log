@@ -379,7 +379,7 @@ function applyTemplate(){
 function frame({back,action,title,sub,body}){
   const left=back?`<button class="nav-btn" data-a="back">${ic('back')}${esc(back)}</button>`:'';
   const right=action?`<button class="nav-btn${action.cls?' '+action.cls:''}" data-a="${action.a}"${action.hidden?' hidden':''}>${esc(action.label)}</button>`:'';
-  return `<div class="topbar">${left}${right}</div><h1 class="large">${esc(title)}</h1>${sub?`<p class="sub">${sub}</p>`:''}${body}`;
+  return `<div class="topbar">${left}${right}</div><h1 class="large">${esc(title)}</h1>${sub?`<p class="sub">${sub}</p>`:''}${movedBanner()}${body}`;
 }
 function empty(icon,title,text,buttons){
   return `<div class="empty"><div class="empty-icon">${ic(icon)}</div><h2>${esc(title)}</h2><p>${esc(text)}</p>
@@ -415,7 +415,7 @@ function renderToday(){
   }
   const day=currentDay(),nx=nextDay();
   const dr=S.draft&&S.draft.dayId===day.id?S.draft:null;
-  let body=movedBanner()+`<div class="chips">${aDays().map(d=>`<button class="chip${d.id===day.id?' on':''}" data-a="pickday" data-id="${d.id}">${d.id===nx.id?'<span class="dot"></span>':''}${esc(d.name)}</button>`).join('')}</div>`;
+  let body=`<div class="chips">${aDays().map(d=>`<button class="chip${d.id===day.id?' on':''}" data-a="pickday" data-id="${d.id}">${d.id===nx.id?'<span class="dot"></span>':''}${esc(d.name)}</button>`).join('')}</div>`;
   if(dr){
     const n=day.exercises.length,done=day.exercises.filter(ex=>exDone(dr,ex.id)).length;
     body+=`<div class="progress"><div class="progress-track"><div class="progress-fill" style="width:${n?done/n*100:0}%"></div></div>
@@ -535,7 +535,7 @@ function renderHistory(){
 }
 
 function renderSettings(){
-  return frame({title:'Settings',body:`${movedBanner()}
+  return frame({title:'Settings',body:`
     <div class="section-title">Preferences</div><div class="group">
       <div class="cell static"><div class="cell-main"><div class="cell-title">Weight unit</div></div>
         <div class="seg"><button data-a="units" data-u="lb" class="${S.units==='lb'?'on':''}">lb</button><button data-a="units" data-u="kg" class="${S.units==='kg'?'on':''}">kg</button></div></div></div>
