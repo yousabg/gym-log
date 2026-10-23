@@ -352,7 +352,11 @@ function checkComplete(){
 const draftHasData=()=>S.draft&&Object.values(S.draft.ex).some(x=>x.sets.some(s=>s.done||s.w!==''||s.r!==''));
 function ensureDraft(day){
   if(!S.draft||S.draft.dayId!==day.id)S.draft={dayId:day.id,started:new Date().toISOString(),ex:{}};
-  for(const ex of day.exercises)if(!S.draft.ex[ex.id])S.draft.ex[ex.id]={sets:blankSets(ex.sets)};
+  // Set count always follows the routine.
+  for(const ex of day.exercises){
+    const x=S.draft.ex[ex.id]||(S.draft.ex[ex.id]={sets:[]});
+    const n=Math.max(1,ex.sets||1);x.sets=x.sets.slice(0,n);while(x.sets.length<n)x.sets.push({w:'',r:'',done:false});
+  }
   return S.draft;
 }
 
@@ -408,7 +412,7 @@ function renderToday(){
       :empty('routine',`${r.name} has no days yet`,'Add workout days to your active routine.',[['Add days','openactive','primary']])});
   }
   const day=currentDay(),nx=nextDay();
-  const dr=S.draft&&S.draft.dayId===day.id?S.draft:null;
+  const dr=S.draft&&S.draft.dayId===day.id?ensureDraft(day):null;
   let body=`<div class="chips">${aDays().map(d=>`<button class="chip${d.id===day.id?' on':''}" data-a="pickday" data-id="${d.id}">${d.id===nx.id?'<span class="dot"></span>':''}${esc(d.name)}</button>`).join('')}</div>`;
   if(dr){
     const n=day.exercises.length,done=day.exercises.filter(ex=>exDone(dr,ex.id)).length;
@@ -439,9 +443,7 @@ function renderToday(){
           <input class="field" inputmode="decimal" data-f="w" data-i="${i}" value="${esc(s.w!==''?s.w:wHint(sets,i,last))}" aria-label="Set ${i+1} weight">
           <input class="field" inputmode="numeric" data-f="r" data-i="${i}" value="${esc(s.r!==''?s.r:rHint(i,last,ex))}" aria-label="Set ${i+1} reps">
           <button class="check" data-a="done" data-i="${i}" aria-label="Complete set ${i+1}">${ic('check')}</button></div>`).join('')}
-      <div class="ex-actions"><button class="text-btn" data-a="addset">${ic('plus')}Add set</button>
-        <button class="text-btn" data-a="rmset"${sets.length>1?'':' disabled'}>${ic('minus')}Remove set</button>
-        ${x?.note||noteOpen===ex.id?'':`<button class="text-btn" data-a="addnote">${ic('plus')}Add note</button>`}</div>
+      ${x?.note||noteOpen===ex.id?'':`<div class="ex-actions"><button class="text-btn" data-a="addnote">${ic('plus')}Add note</button></div>`}
       ${x?.note||noteOpen===ex.id?`<input class="note-field" data-note="1" value="${esc(x?.note)}" placeholder="Add a note" aria-label="Note">`:''}
     </div></section>`;
   }
@@ -734,11 +736,9 @@ document.addEventListener('click',async e=>{
     case 'pickday':{
       viewDayId=b.dataset.id;openEx=noteOpen=null;break;
     }
-    case 'done':case 'addset':case 'rmset':{
+    case 'done':{
       const sets=ensureDraft(currentDay()).ex[exId].sets;
-      if(a==='addset')sets.push({w:'',r:'',done:false});
-      else if(a==='rmset'){if(sets.length>1)sets.pop()}
-      else{
+      {
         const i=+b.dataset.i,s=sets[i],card=b.closest('[data-ex]');
         if(!s.done){
           if(s.w==='')s.w=card.querySelector(`[data-f=w][data-i="${i}"]`).value;
