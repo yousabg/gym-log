@@ -75,7 +75,6 @@ h1.large{font-size:34px;font-weight:700;letter-spacing:.01em;margin:0;line-heigh
 .snum{color:var(--muted);font-weight:600;text-align:center;font-variant-numeric:tabular-nums}
 .field{width:100%;min-width:0;height:46px;border:none;border-radius:12px;background:var(--fill);text-align:center;font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;outline:none;transition:background .15s}
 .field:focus{box-shadow:inset 0 0 0 2px var(--accent)}
-.field.prefill{color:var(--muted);font-weight:500}
 .field::placeholder{color:var(--faint);font-weight:500}
 .check{height:46px;border-radius:12px;background:var(--fill);color:var(--faint);display:grid;place-items:center;transition:background .15s,color .15s}
 .srow.done .check{background:var(--accent);color:var(--on-accent)}
@@ -444,8 +443,8 @@ function renderToday(){
       ${ex.notes?`<div class="note">${esc(ex.notes)}</div>`:''}
       <div class="grid grid-head"><span>Set</span><span>${S.units}</span><span>Reps</span><span></span></div>
       ${sets.map((s,i)=>`<div class="grid srow${s.done?' done':''}"><span class="snum">${i+1}</span>
-          <input class="field${s.w===''&&!s.done?' prefill':''}" inputmode="decimal" data-f="w" data-i="${i}" value="${esc(s.w!==''?s.w:wHint(sets,i,last))}" aria-label="Set ${i+1} weight">
-          <input class="field${s.r===''&&!s.done?' prefill':''}" inputmode="numeric" data-f="r" data-i="${i}" value="${esc(s.r!==''?s.r:rHint(i,last,ex))}" aria-label="Set ${i+1} reps">
+          <input class="field" inputmode="decimal" data-f="w" data-i="${i}" value="${esc(s.w!==''?s.w:wHint(sets,i,last))}" aria-label="Set ${i+1} weight">
+          <input class="field" inputmode="numeric" data-f="r" data-i="${i}" value="${esc(s.r!==''?s.r:rHint(i,last,ex))}" aria-label="Set ${i+1} reps">
           <button class="check" data-a="done" data-i="${i}" aria-label="Complete set ${i+1}">${ic('check')}</button></div>`).join('')}
       <div class="ex-actions"><button class="text-btn" data-a="addset">${ic('plus')}Add set</button>
         <button class="text-btn" data-a="rmset"${sets.length>1?'':' disabled'}>${ic('minus')}Remove set</button>
@@ -717,7 +716,6 @@ main.addEventListener('input',e=>{
     const card=t.closest('[data-ex]'),last=lastFor(currentDay().exercises.find(e=>e.id===card.dataset.ex));
     card.querySelectorAll('[data-f=w]').forEach(el=>{const i=+el.dataset.i;if(i>+t.dataset.i&&x.sets[i].w==='')el.value=wHint(x.sets,i,last)});
   }
-  if(t.dataset.f)t.classList.remove('prefill');
   syncSession();save();
   const db=$('[data-a=discard]');if(db)db.hidden=false;
 });
