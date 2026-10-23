@@ -204,6 +204,8 @@ h1.large{font-size:34px;font-weight:700;letter-spacing:.01em;margin:0;line-heigh
 .ex-top .status{margin:0 2px 0 -4px}
 .ex-head-btn{flex:1;min-width:0;text-align:left}
 .ex-top .round-btn+.round-btn{margin-left:-4px}
+.tip.move{margin-top:12px}
+.code-field{display:block;width:100%;height:140px;border:none;background:none;padding:14px 16px;font:13px/1.4 ui-monospace,Menlo,monospace;color:var(--text);resize:none;outline:none}
 .toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 130px);transform:translate(-50%,10px);display:flex;align-items:center;gap:8px;background:var(--text);color:var(--bg);padding:11px 18px;border-radius:999px;font-size:15px;font-weight:600;opacity:0;transition:all .25s;pointer-events:none;z-index:30;white-space:nowrap}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 .toast .ic{width:18px;height:18px}
@@ -408,12 +410,12 @@ function renderToday(){
     const r=active();
     return frame({title:'Today',sub:fmtDate(new Date()),body:!S.routines.length?empty('today','No routine yet',
       'Add your workout days and exercises. Each time you open the app, the next workout will be ready here.',
-      [['Set up my routine','gotoroutine','primary'],['Use Push, Pull, Legs template','template','']])
+      [['Set up my routine','gotoroutine','primary'],['Use Push, Pull, Legs template','template',''],['Paste transfer code','pastecode','']])
       :empty('routine',`${r.name} has no days yet`,'Add workout days to your active routine.',[['Add days','openactive','primary']])});
   }
   const day=currentDay(),nx=nextDay();
   const dr=S.draft&&S.draft.dayId===day.id?S.draft:null;
-  let body=`<div class="chips">${aDays().map(d=>`<button class="chip${d.id===day.id?' on':''}" data-a="pickday" data-id="${d.id}">${d.id===nx.id?'<span class="dot"></span>':''}${esc(d.name)}</button>`).join('')}</div>`;
+  let body=movedBanner()+`<div class="chips">${aDays().map(d=>`<button class="chip${d.id===day.id?' on':''}" data-a="pickday" data-id="${d.id}">${d.id===nx.id?'<span class="dot"></span>':''}${esc(d.name)}</button>`).join('')}</div>`;
   if(dr){
     const n=day.exercises.length,done=day.exercises.filter(ex=>exDone(dr,ex.id)).length;
     body+=`<div class="progress"><div class="progress-track"><div class="progress-fill" style="width:${n?done/n*100:0}%"></div></div>
@@ -533,7 +535,7 @@ function renderHistory(){
 }
 
 function renderSettings(){
-  return frame({title:'Settings',body:`
+  return frame({title:'Settings',body:`${movedBanner()}
     <div class="section-title">Preferences</div><div class="group">
       <div class="cell static"><div class="cell-main"><div class="cell-title">Weight unit</div></div>
         <div class="seg"><button data-a="units" data-u="lb" class="${S.units==='lb'?'on':''}">lb</button><button data-a="units" data-u="kg" class="${S.units==='kg'?'on':''}">kg</button></div></div></div>
@@ -545,13 +547,17 @@ function renderSettings(){
     <p class="footnote">Starts when you check off a set. Turn your ringer on to hear the alert.</p>
     <div class="section-title">Backup</div><div class="group">
       <button class="cell action" data-a="export">Export backup</button>
-      <button class="cell action" data-a="import">Import backup</button></div>
-    <p class="footnote">Your data is stored only on this device. Export a backup from time to time and keep it in Files or iCloud Drive.</p>
+      <button class="cell action" data-a="import">Import backup</button>
+      <button class="cell action" data-a="copycode">Copy transfer code</button>
+      <button class="cell action" data-a="pastecode">Paste transfer code</button></div>
+    <p class="footnote">Your data is stored only on this device. Export a backup from time to time and keep it in Files or iCloud Drive. To move your data to another phone or app, copy a transfer code there and paste it here.</p>
     <div class="section-title">Data</div><div class="group">
       <div class="cell static"><div class="cell-main"><div class="cell-title">Workouts logged</div></div><span class="cell-value">${S.sessions.length}</span></div>
       <button class="cell destructive" data-a="erase">Erase all data</button></div>`});
 }
 
+const OLD_HOST=location.protocol==='http:'&&!/^(localhost|127\.)/.test(location.hostname);
+const movedBanner=()=>OLD_HOST?`<div class="tip move"><div class="tip-text"><b>Gym Log has moved</b><br>1. Tap Copy.<br>2. Open <b>${'https://yousabg.github.io/gym-log/'.replace('https://','')}</b> and tap Paste transfer code in Settings.</div><button class="text-btn" data-a="copycode">Copy</button></div>`:'';
 const TABS=[['today','Today'],['routine','Routines'],['history','History'],['settings','Settings']];
 function render(){
   expireDraft();
@@ -673,6 +679,29 @@ $('#imp').addEventListener('change',async e=>{
   try{d=JSON.parse(await f.text())}catch(err){}
   importData(d);
 });
+// Transfer code: the whole data set as base64 text, for moving between apps via the clipboard.
+function packData(){
+  const bytes=new TextEncoder().encode(JSON.stringify({...S,draft:null}));
+  let bin='';for(const b of bytes)bin+=String.fromCharCode(b);
+  return 'GYMLOG1:'+btoa(bin);
+}
+function unpackData(code){
+  const m=String(code||'').replace(/\s/g,'').match(/GYMLOG1:([A-Za-z0-9+/=]+)/);
+  if(!m)return null;
+  try{return JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(m[1]),c=>c.charCodeAt(0))))}catch(e){return null}
+}
+function copyText(t){
+  if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(t);return true}
+  const ta=document.createElement('textarea');ta.value=t;ta.setAttribute('readonly','');ta.style.cssText='position:fixed;top:0;left:0;opacity:0';
+  document.body.appendChild(ta);ta.select();ta.setSelectionRange(0,t.length);
+  let ok=false;try{ok=document.execCommand('copy')}catch(e){}
+  ta.remove();return ok;
+}
+function openPasteSheet(){
+  openSheet(`${sheetBar('Paste Transfer Code','Cancel',{label:'Import',a:'pastego'})}
+    <div class="group"><textarea id="f-code" class="code-field" placeholder="Paste the transfer code here" autocomplete="off" autocorrect="off" spellcheck="false"></textarea></div>
+    <p class="footnote">Copy the code in Settings on your other device, then paste it above.</p>`);
+}
 async function importData(d){
   if(!d||(!Array.isArray(d.days)&&!Array.isArray(d.routines))||!Array.isArray(d.sessions)){await ask({title:'Can\'t import',msg:'That file is not a Gym Log backup.',cancel:null});return}
   if(!await ask({title:'Replace your data?',msg:`This backup has ${plural(d.routines?d.routines.length:1,'routine')} and ${plural(d.sessions.length,'workout')}. Your current data will be replaced.`,ok:'Replace',danger:true}))return;
@@ -843,6 +872,19 @@ document.addEventListener('click',async e=>{
     case 'theme':S.theme=b.dataset.t;applyTheme();break;
     case 'export':exportData();return;
     case 'import':$('#imp').click();return;
+    case 'copycode':
+      if(copyText(packData()))toast('Transfer code copied');
+      else await ask({title:'Could not copy',msg:'Use Export backup instead.',cancel:null});
+      return;
+    case 'pastecode':
+      openPasteSheet();
+      if(navigator.clipboard?.readText)navigator.clipboard.readText().then(t=>{if(unpackData(t))$('#f-code').value=t}).catch(()=>{});
+      return;
+    case 'pastego':{
+      const d=unpackData($('#f-code').value);
+      if(!d){await ask({title:'Code not recognized',msg:'Copy the transfer code again and paste the whole thing.',cancel:null});return}
+      closeSheet();importData(d);return;
+    }
     case 'erase':
       if(!await ask({title:'Erase all data?',msg:'Your routine and every logged workout will be deleted. This cannot be undone.',ok:'Erase',danger:true}))return;
       S={units:S.units,theme:S.theme,routines:[],activeId:null,sessions:[],weights:[],draft:null};viewDayId=routeRoutine=routeDay=null;break;
