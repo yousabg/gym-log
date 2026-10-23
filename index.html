@@ -221,7 +221,6 @@ const $=s=>document.querySelector(s);
 const main=$('#main');
 const uid=()=>Math.random().toString(36).slice(2,10);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const norm=s=>String(s||'').trim().toLowerCase();
 const fmtDate=d=>new Date(d).toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'});
 const fmtShort=d=>new Date(d).toLocaleDateString(undefined,{month:'short',day:'numeric'});
 const fmtMed=d=>new Date(d).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
@@ -303,17 +302,16 @@ function nextDay(){
   return days[(i+1)%days.length];
 }
 function currentDay(){const days=aDays();return days.find(d=>d.id===viewDayId)||(S.draft&&days.find(d=>d.id===S.draft.dayId))||nextDay()}
-const matches=(e,ex)=>e.exId===ex.id||norm(e.name)===norm(ex.name);
+// History belongs to one exercise on one day, so Hack Squat on Lower A and on Lower B stay separate.
+const matches=(e,ex)=>e.exId===ex.id;
 function historyFor(ex){
   const out=[];
   for(const s of sortedSessions()){const e=s.entries.find(e=>matches(e,ex));if(e&&e.sets.length)out.push({date:s.date,sets:e.sets,note:e.note})}
   return out;
 }
-// Prefer the same exercise on the same day, so a lift done with a different rep scheme on another day doesn't show.
 function lastFor(ex){
   const ss=sortedSessions();
-  for(const hit of [e=>e.exId===ex.id,e=>norm(e.name)===norm(ex.name)])
-    for(const s of ss){if(s.id===S.draft?.sessionId)continue;const e=s.entries.find(hit);if(e&&e.sets.length)return {date:s.date,sets:e.sets,note:e.note}}
+  for(const s of ss){if(s.id===S.draft?.sessionId)continue;const e=s.entries.find(e=>matches(e,ex));if(e&&e.sets.length)return {date:s.date,sets:e.sets,note:e.note}}
   return null;
 }
 const exDone=(dr,id)=>{const xs=dr?.ex[id]?.sets;return !!xs&&xs.every(s=>s.done)};
@@ -346,7 +344,7 @@ function checkComplete(){
   const ses=S.sessions.find(s=>s.id===dr.sessionId);if(!ses)return;
   const prs=ses.entries.map(e=>{
     const w=Math.max(...e.sets.map(s=>s.w));
-    const before=S.sessions.filter(s=>s!==ses).flatMap(s=>s.entries.filter(x=>norm(x.name)===norm(e.name)).flatMap(x=>x.sets.map(s=>s.w)));
+    const before=S.sessions.filter(s=>s!==ses).flatMap(s=>s.entries.filter(x=>x.exId===e.exId).flatMap(x=>x.sets.map(s=>s.w)));
     return w&&before.length&&w>Math.max(...before)?{name:e.name,w}:null;
   }).filter(Boolean);
   openSummary(day,ses.entries,prs,ses.duration);
