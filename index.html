@@ -995,7 +995,7 @@ if(location.hash.startsWith('#import=')){
 applyTheme();
 navigator.storage?.persist?.();
 document.addEventListener('visibilitychange',()=>{if(document.hidden)pushNow();else{render();pull()}});
-if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js');
+if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(r=>r.update());
 lastSaved=JSON.stringify(cloudData());
 render();
 </script>
