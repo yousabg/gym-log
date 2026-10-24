@@ -214,13 +214,6 @@ main:has(.gate){padding-bottom:calc(env(safe-area-inset-bottom) + 12px)}
 .summary{text-align:center;padding:20px 0 4px}
 .summary h2{font-size:24px;margin:0 0 6px}
 .summary p{color:var(--muted);margin:0}
-.seg.seg-full{width:100%}
-.rest{position:fixed;bottom:calc(env(safe-area-inset-bottom) + 72px);left:50%;transform:translate(-50%,16px);opacity:0;pointer-events:none;display:flex;align-items:center;gap:10px;background:var(--text);color:var(--bg);border-radius:999px;padding:6px 6px 6px 18px;z-index:8;transition:transform .35s cubic-bezier(.2,.9,.3,1),opacity .25s;box-shadow:0 8px 28px rgba(0,0,0,.25);white-space:nowrap}
-.rest.show{transform:translate(-50%,0);opacity:1;pointer-events:auto}
-.rest.over{padding:12px 20px}
-.rest-label{font-size:11px;opacity:.65;text-transform:uppercase;letter-spacing:.06em;font-weight:600}
-.rest-time{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;min-width:54px;line-height:1.1}
-.rest button{height:38px;padding:0 15px;border-radius:999px;background:rgba(128,128,128,.28);font-size:15px;font-weight:600}
 .badge{display:inline-flex;align-items:center;gap:2px;background:var(--accent-soft);color:var(--accent);font-size:13px;font-weight:600;padding:3px 10px;border-radius:999px;flex:none}
 .active-banner{display:flex;align-items:center;gap:8px;background:var(--accent-soft);color:var(--accent);font-weight:600;font-size:15px;border-radius:12px;padding:12px 14px;margin-top:16px}
 .active-banner .ic{width:18px;height:18px}
@@ -255,7 +248,6 @@ main:has(.gate){padding-bottom:calc(env(safe-area-inset-bottom) + 12px)}
 <div class="sheet-wrap" id="sheet"><div class="sheet" id="sheetBody"></div></div>
 <div class="alert-wrap" id="alert" hidden></div>
 <div class="toast" id="toast"></div>
-<div class="rest" id="rest" aria-live="polite"></div>
 <input type="file" id="imp" accept="application/json,.json" hidden>
 <script>
 const KEY='gymlog.v1';
@@ -307,6 +299,7 @@ function load(){
   delete s.days;
   if(!s.routines.some(r=>r.id===s.activeId))s.activeId=s.routines[0]?.id||null;
   if(!Array.isArray(s.weights))s.weights=[];
+  delete s.rest;
   for(const r of s.routines)for(const d of r.days)for(const ex of d.exercises)if(ex.repsMin===undefined){
     const n=String(ex.reps||'').match(/\d+/g)||[];ex.repsMin=+n[0]||'';ex.repsMax=+n[1]||'';delete ex.reps;
   }
@@ -424,7 +417,7 @@ function checkComplete(){
   const dr=S.draft,day=dr&&findDay(dr.dayId);if(!day)return;
   if(!day.exercises.length||!day.exercises.every(ex=>exDone(dr,ex.id))){dr.summaryShown=false;return}
   if(dr.summaryShown)return;
-  dr.summaryShown=true;openEx=null;rest=null;tickRest();
+  dr.summaryShown=true;openEx=null;
   const ses=S.sessions.find(s=>s.id===dr.sessionId);if(!ses)return;
   const prs=ses.entries.map(e=>{
     const w=Math.max(...e.sets.map(s=>s.w));
@@ -619,9 +612,6 @@ function renderSettings(){
     <div class="group" style="margin-top:12px">
       <div class="cell static"><div class="cell-main"><div class="cell-title">Appearance</div></div>
         <div class="seg seg3">${[['system','System'],['light','Light'],['dark','Dark']].map(([k,l])=>`<button data-a="theme" data-t="${k}" class="${(S.theme||'system')===k?'on':''}">${l}</button>`).join('')}</div></div></div>
-    <div class="section-title">Rest timer</div><div class="group"><div class="cell static">
-      <div class="seg seg-full">${[[0,'Off'],[60,'1:00'],[90,'1:30'],[120,'2:00'],[180,'3:00']].map(([v,l])=>`<button data-a="rest" data-s="${v}" class="${restSec()===v?'on':''}">${l}</button>`).join('')}</div></div></div>
-    <p class="footnote">Starts when you check off a set. Turn your ringer on to hear the alert.</p>
     <div class="section-title">Account</div><div class="group">${user?`
       <div class="cell static"><div class="cell-main"><div class="cell-title">${user.providerData?.some(p=>p.providerId==='google.com')?'Google':'Email'}</div></div><span class="cell-value">${esc(user.email||'Signed in')}</span></div>
       <button class="cell action" data-a="signout">Sign Out</button></div>
@@ -781,32 +771,6 @@ function openWeights(){
       <button class="mini danger" data-a="bwdel" aria-label="Delete">${ic('trash')}</button></div>`).join('')}</div>`:''}`);
 }
 
-let rest=null,actx=null;
-const restSec=()=>S.rest??90;
-function unlockAudio(){try{actx=actx||new(window.AudioContext||window.webkitAudioContext)();actx.resume()}catch(e){}}
-function beep(){
-  if(!actx)return;
-  for(const t of [0,.3]){
-    const o=actx.createOscillator(),g=actx.createGain(),at=actx.currentTime+t;
-    o.frequency.value=880;g.gain.setValueAtTime(.001,at);g.gain.exponentialRampToValueAtTime(.3,at+.02);g.gain.exponentialRampToValueAtTime(.001,at+.22);
-    o.connect(g).connect(actx.destination);o.start(at);o.stop(at+.25);
-  }
-}
-function startRest(){rest={end:Date.now()+restSec()*1000};tickRest()}
-function tickRest(){
-  const el=$('#rest');
-  if(!rest){el.classList.remove('show');return}
-  const left=Math.max(0,Math.ceil((rest.end-Date.now())/1000));
-  if(!left){
-    rest=null;beep();navigator.vibrate?.([200,100,200]);
-    el.className='rest show over';el.innerHTML='<div class="rest-time">Rest over</div>';
-    setTimeout(()=>{if(!rest)el.className='rest'},2500);return;
-  }
-  el.className='rest show';
-  el.innerHTML=`<div><div class="rest-label">Rest</div><div class="rest-time">${Math.floor(left/60)}:${String(left%60).padStart(2,'0')}</div></div>
-    <button data-a="restadd">+30s</button><button data-a="restskip">Skip</button>`;
-}
-setInterval(()=>{if(rest)tickRest()},500);
 
 function openSummary(day,entries,prs,mins){
   const sets=entries.reduce((t,e)=>t+e.sets.length,0);
@@ -907,10 +871,7 @@ document.addEventListener('click',async e=>{
         }
         s.done=!s.done;
         if(s.done){
-          unlockAudio();
           if(sets.every(x=>x.done))openNext(exId);
-          const allDone=currentDay().exercises.every(ex=>exDone(S.draft,ex.id));
-          if(restSec()&&!allDone)startRest();
         }
       }
       break;
@@ -927,13 +888,10 @@ document.addEventListener('click',async e=>{
     }
     case 'discard':
       if(!await ask({title:'Discard workout?',msg:'Everything you checked off today will be removed from History.',ok:'Discard',danger:true}))return;
-      S.sessions=S.sessions.filter(s=>s.id!==S.draft.sessionId);S.draft=null;openEx=noteOpen=null;rest=null;tickRest();break;
+      S.sessions=S.sessions.filter(s=>s.id!==S.draft.sessionId);S.draft=null;openEx=noteOpen=null;break;
     case 'toggleex':openEx=openEx===exId?null:exId;if(openEx)afterRender=scrollToEx(exId);break;
     case 'addnote':noteOpen=exId;afterRender=()=>main.querySelector(`[data-ex="${exId}"] .note-field`)?.focus();break;
     case 'tipok':S.tipSeen=true;break;
-    case 'restadd':if(rest){rest.end+=30000;tickRest()}return;
-    case 'restskip':rest=null;tickRest();return;
-    case 'rest':S.rest=+b.dataset.s;break;
     case 'exhist':openExHist(currentDay().exercises.find(x=>x.id===exId));return;
     case 'toggleedit':editing=!editing;break;
     case 'openday':routeDay=cellDay.id;editing=false;render();scrollTo(0,0);return;
