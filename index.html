@@ -134,6 +134,26 @@ main:has(.gate){padding-bottom:calc(env(safe-area-inset-bottom) + 12px)}
 :root[data-theme=dark] .g-btn{background:#131314;color:#e3e3e3;border-color:#8e918f}
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]) .g-btn{background:#131314;color:#e3e3e3;border-color:#8e918f}}
 .gate-err{color:var(--muted);text-align:center;margin:0 0 14px}
+.gate-email{margin-top:12px;color:var(--text);border-radius:26px;font-weight:500;border:1px solid var(--fill2);box-shadow:none}
+.gate-form .topbar{justify-content:flex-start}
+.gate-email .ic{width:20px;height:20px;color:var(--muted)}
+.gate-form{padding-top:0;min-height:0}
+.gate-form .large{margin-bottom:6px}
+.gate-sub{color:var(--muted);margin:0 0 22px;font-size:16px;line-height:1.4}
+.gate-form .frow>span{width:84px}
+.gate-form .frow input{text-align:left}
+.eye{color:var(--accent);font-size:15px;font-weight:500;padding:8px 0 8px 8px}
+.gate-form .gate-err{color:var(--danger);text-align:left;margin:12px 16px 0;font-size:14px}
+.gate-submit{margin-top:20px}
+.gate-link{display:block;margin:18px auto 0;color:var(--accent);font-size:16px;font-weight:500}
+.gate-link.inline{display:inline;margin:0;font-size:inherit}
+.gate-alt{text-align:center;color:var(--muted);margin:26px 0 0;font-size:15px}
+.gate-sent{padding-top:5vh}
+.gate-sent h1{font-size:28px}
+.gate-sent p{color:var(--muted);line-height:1.45;margin:0 0 8px}
+.gate-sent b{color:var(--text);font-weight:600}
+.gate-feat-ic.big{width:64px;height:64px;border-radius:18px;margin:0 auto}
+.gate-feat-ic.big .ic{width:32px;height:32px}
 .gate-fine{color:var(--faint);font-size:13px;text-align:center;margin:14px 0 0}
 .empty-icon{width:64px;height:64px;border-radius:18px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;margin:0 auto 18px}
 .empty-icon .ic{width:32px;height:32px}
@@ -270,6 +290,7 @@ const I={
   back:'<path d="M15 5.5L8.5 12l6.5 6.5"/>',
   up:'<path d="M6 14.5l6-6 6 6"/>',
   down:'<path d="M6 9.5l6 6 6-6"/>',
+  mail:'<rect x="3.5" y="5.5" width="17" height="13" rx="2.5"/><path d="M4 7l8 6 8-6"/>',
   cloud:'<path d="M7 18.5h10.5a4 4 0 00.6-7.95A6 6 0 006.4 9.6 4.5 4.5 0 007 18.5z"/>',
   trash:'<path d="M4.5 7h15M10 11v6M14 11v6M6.5 7l.8 12.2a1 1 0 001 .8h7.4a1 1 0 001-.8L17.5 7M9.5 7V4.5h5V7"/>',
 };
@@ -602,8 +623,9 @@ function renderSettings(){
       <div class="seg seg-full">${[[0,'Off'],[60,'1:00'],[90,'1:30'],[120,'2:00'],[180,'3:00']].map(([v,l])=>`<button data-a="rest" data-s="${v}" class="${restSec()===v?'on':''}">${l}</button>`).join('')}</div></div></div>
     <p class="footnote">Starts when you check off a set. Turn your ringer on to hear the alert.</p>
     <div class="section-title">Account</div><div class="group">${user?`
-      <div class="cell static"><div class="cell-main"><div class="cell-title">Google</div></div><span class="cell-value">${esc(user.email||'Signed in')}</span></div>
-      <button class="cell action" data-a="signout">Sign out</button>`:`
+      <div class="cell static"><div class="cell-main"><div class="cell-title">${user.providerData?.some(p=>p.providerId==='google.com')?'Google':'Email'}</div></div><span class="cell-value">${esc(user.email||'Signed in')}</span></div>
+      <button class="cell action" data-a="signout">Sign Out</button></div>
+    <div class="group" style="margin-top:12px"><button class="cell destructive" data-a="delacct">Delete Account</button>`:`
       <button class="cell action" data-a="signin">Sign in with Google</button>`}</div>
     <p class="footnote">${user?'Your workouts save to your account automatically. Sign in on any device to get them back.':'Sign in to back up your workouts and use them on any device.'}</p>
     <div class="section-title">Backup</div><div class="group">
@@ -620,12 +642,45 @@ function renderSettings(){
 const OLD_HOST=location.protocol==='http:'&&!/^(localhost|127\.)/.test(location.hostname);
 const movedBanner=()=>OLD_HOST?`<div class="tip move"><div class="tip-text"><b>Gym Log has moved</b><br>1. Tap Copy.<br>2. Open <b>${'https://yousabg.github.io/gym-log/'.replace('https://','')}</b> and tap Paste transfer code in Settings.</div><button class="text-btn" data-a="copycode">Copy</button></div>`:'';
 const TABS=[['today','Today'],['routine','Routines'],['history','History'],['settings','Settings']];
-// An account is required. Someone who signed in before can keep using the app offline while sign-in loads.
 const GOOGLE_G='<svg class="g-logo" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>';
 // An account is required. Someone who signed in before can keep using the app offline while sign-in loads.
+// Screens: welcome, signin, signup, reset, sent.
+let gate={mode:'welcome',email:'',err:'',busy:false};
+const AUTH_ERR={
+  'auth/invalid-credential':'Email or password is incorrect.','auth/wrong-password':'Email or password is incorrect.','auth/user-not-found':'Email or password is incorrect.',
+  'auth/invalid-email':'Enter a valid email address.','auth/missing-email':'Enter your email address.','auth/missing-password':'Enter your password.',
+  'auth/email-already-in-use':'An account with this email already exists. Sign in instead.',
+  'auth/weak-password':'Use at least 8 characters for your password.',
+  'auth/too-many-requests':'Too many attempts. Wait a few minutes and try again.',
+  'auth/network-request-failed':'Can\'t connect. Check your internet connection.',
+  'auth/account-exists-with-different-credential':'This email already uses a different sign in method.',
+};
+const authMsg=e=>AUTH_ERR[e?.code]||'Something went wrong. Please try again.';
+function gateForm(title,sub,fields,submit,after=''){
+  return `<div class="gate gate-form"><div class="topbar"><button class="nav-btn" data-a="gate" data-m="${gate.mode==='signup'||gate.mode==='reset'||gate.mode==='sent'?'signin':'welcome'}">${ic('back')}Back</button></div>
+    <h1 class="large">${title}</h1><p class="gate-sub">${sub}</p>
+    <form id="auth-form" novalidate>${fields?`<div class="group">${fields}</div>`:''}
+      ${gate.err?`<p class="gate-err" role="alert">${esc(gate.err)}</p>`:''}
+      <button class="btn primary gate-submit" type="submit"${gate.busy?' disabled':''}>${gate.busy?'Please wait':submit}</button></form>${after}</div>`;
+}
+const emailField=(auto='username')=>`<label class="frow"><span>Email</span><input id="a-email" type="email" inputmode="email" autocomplete="${auto}" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(gate.email)}" placeholder="name@example.com"></label>`;
+const passField=(auto,ph)=>`<label class="frow"><span>Password</span><input id="a-pass" type="password" autocomplete="${auto}" placeholder="${ph}"><button type="button" class="eye" data-a="showpass" aria-label="Show password">Show</button></label>`;
 function renderGate(){
-  const st=window.cloudState,failed=st==='failed';
+  const st=window.cloudState,m=gate.mode;
+  if(st==='failed')return `<div class="gate"><div class="gate-top"><img class="gate-icon" src="icon-180.png" alt=""><h1>Gym Log</h1></div>
+    <div class="gate-feats"></div><div class="gate-bottom"><p class="gate-err">Can't connect right now. Check your internet connection.</p><button class="btn primary" data-a="reload">Try Again</button></div></div>`;
+  if(m==='signin')return gateForm('Sign In','Welcome back.',emailField()+passField('current-password','Required'),'Sign In',
+    `<button class="gate-link" data-a="gate" data-m="reset">Forgot password?</button>
+     <p class="gate-alt">New to Gym Log? <button class="gate-link inline" data-a="gate" data-m="signup">Create an account</button></p>`);
+  if(m==='signup')return gateForm('Create Account','Use your email and a password you will remember.',emailField()+passField('new-password','At least 8 characters'),'Create Account',
+    `<p class="gate-alt">Already have an account? <button class="gate-link inline" data-a="gate" data-m="signin">Sign in</button></p>`);
+  if(m==='reset')return gateForm('Reset Password','Enter the email you signed up with and we will send you a link to choose a new password.',emailField(),'Send Reset Link');
+  if(m==='sent')return `<div class="gate gate-form"><div class="topbar"><button class="nav-btn" data-a="gate" data-m="signin">${ic('back')}Back</button></div>
+    <div class="gate-top gate-sent"><span class="gate-feat-ic big">${ic('mail')}</span><h1>Check your email</h1>
+    <p>If an account exists for <b>${esc(gate.email)}</b>, a reset link is on its way. Open it to choose a new password, then sign in here. Check your spam folder if you don't see it.</p></div>
+    <button class="btn primary gate-submit" data-a="gate" data-m="signin">Back to Sign In</button></div>`;
   const feat=(i,t,d)=>`<div class="gate-feat"><span class="gate-feat-ic">${ic(i)}</span><div><b>${t}</b><span>${d}</span></div></div>`;
+  const wait=st==='loading';
   return `<div class="gate">
     <div class="gate-top"><img class="gate-icon" src="icon-180.png" alt=""><h1>Gym Log</h1><p>Track every set and beat last time.</p></div>
     <div class="gate-feats">
@@ -634,11 +689,28 @@ function renderGate(){
       ${feat('cloud','Saved to your account','Your workouts follow you to any device.')}
     </div>
     <div class="gate-bottom">
-      ${failed?`<p class="gate-err">Can't connect right now. Check your internet connection.</p><button class="btn primary" data-a="reload">Try Again</button>`
-      :`<button class="g-btn" data-a="signin"${st==='loading'?' disabled':''}>${GOOGLE_G}<span>${st==='loading'?'Loading':'Sign in with Google'}</span></button>`}
+      <button class="g-btn" data-a="signin"${wait?' disabled':''}>${GOOGLE_G}<span>Continue with Google</span></button>
+      <button class="btn gate-email" data-a="gate" data-m="signin"${wait?' disabled':''}>${ic('mail')}Continue with Email</button>
       <p class="gate-fine">Only you can see your workouts.</p>
     </div></div>`;
 }
+async function submitAuth(){
+  const email=($('#a-email')?.value||'').trim(),pass=$('#a-pass')?.value||'',m=gate.mode;
+  gate.email=email;gate.err='';
+  if(!email)gate.err='Enter your email address.';
+  else if(m!=='reset'&&!pass)gate.err='Enter your password.';
+  else if(m==='signup'&&pass.length<8)gate.err='Use at least 8 characters for your password.';
+  if(gate.err)return render();
+  if(!window.cloud){gate.err='Can\'t connect. Check your internet connection.';return render()}
+  gate.busy=true;render();
+  try{
+    if(m==='signin')await cloud.signInEmail(email,pass);
+    else if(m==='signup')await cloud.signUp(email,pass);
+    else{await cloud.reset(email).catch(e=>{if(e.code!=='auth/user-not-found')throw e});gate.mode='sent'}
+  }catch(e){gate.err=authMsg(e)}
+  gate.busy=false;render();
+}
+main.addEventListener('submit',e=>{if(e.target.id==='auth-form'){e.preventDefault();submitAuth()}});
 function render(){
   if(!user&&!(S.syncUid&&window.cloudState!=='out')){$('#tabbar').hidden=true;main.innerHTML=renderGate();return}
   $('#tabbar').hidden=false;
@@ -954,13 +1026,27 @@ document.addEventListener('click',async e=>{
     case 'theme':S.theme=b.dataset.t;applyTheme();break;
     case 'signin':
       if(!window.cloud){await ask({title:'Can\'t connect',msg:'Check your internet connection and try again.',cancel:null});return}
-      try{await cloud.signIn()}catch(e){if(e.code!=='auth/popup-closed-by-user'&&e.code!=='auth/cancelled-popup-request')await ask({title:'Sign in failed',msg:e.message||String(e),cancel:null})}
+      try{await cloud.signIn()}catch(e){if(e.code!=='auth/popup-closed-by-user'&&e.code!=='auth/cancelled-popup-request')await ask({title:'Sign in failed',msg:authMsg(e),cancel:null})}
       return;
+    case 'gate':{
+      const em=$('#a-email');if(em)gate.email=em.value.trim();
+      gate.mode=b.dataset.m;gate.err='';render();
+      if(gate.mode!=='welcome'&&gate.mode!=='sent')setTimeout(()=>$(gate.email&&$('#a-pass')?'#a-pass':'#a-email')?.focus(),50);
+      return;
+    }
+    case 'showpass':{const p=$('#a-pass'),show=p.type==='password';p.type=show?'text':'password';b.textContent=show?'Hide':'Show';return}
+    case 'delacct':{
+      if(!await ask({title:'Delete your account?',msg:'Your account and every workout saved to it will be permanently deleted. This cannot be undone.',ok:'Delete',danger:true}))return;
+      try{await cloud.deleteAccount(user.uid)}
+      catch(e){await ask({title:'Can\'t delete yet',msg:e.code==='auth/requires-recent-login'?'For your security, sign out and sign back in, then try again.':authMsg(e),cancel:null});return}
+      S={units:S.units,theme:S.theme,routines:[],activeId:null,sessions:[],weights:[],draft:null};localStorage.setItem(KEY,JSON.stringify(S));lastSaved=JSON.stringify(cloudData());
+      tab='today';viewDayId=routeRoutine=routeDay=null;gate={mode:'welcome',email:'',err:'',busy:false};toast('Account deleted');return;
+    }
     case 'signout':
       if(!await ask({title:'Sign out?',msg:'Your workouts stay saved in your account. Sign in again to see them.',ok:'Sign Out'}))return;
       if(!await pushNow()){await ask({title:'Can\'t sign out yet',msg:'Your latest changes have not been saved to your account. Connect to the internet and try again.',cancel:null});return}
       S={units:S.units,theme:S.theme,routines:[],activeId:null,sessions:[],weights:[],draft:null};localStorage.setItem(KEY,JSON.stringify(S));lastSaved=JSON.stringify(cloudData());
-      tab='today';viewDayId=routeRoutine=routeDay=null;cloud.signOut();return;
+      tab='today';viewDayId=routeRoutine=routeDay=null;gate={mode:'welcome',email:'',err:'',busy:false};cloud.signOut();return;
     case 'reload':location.reload();return;
     case 'export':exportData();return;
     case 'import':$('#imp').click();return;
@@ -1011,11 +1097,16 @@ try{
       try{await A.signInWithPopup(auth,p)}
       catch(e){if(e.code==='auth/popup-blocked'||e.code==='auth/operation-not-supported-in-this-environment')await A.signInWithRedirect(auth,p);else throw e}
     },
+    signInEmail:(e,p)=>A.signInWithEmailAndPassword(auth,e,p),
+    async signUp(e,p){const c=await A.createUserWithEmailAndPassword(auth,e,p);A.sendEmailVerification(c.user).catch(()=>{})},
+    reset:e=>A.sendPasswordResetEmail(auth,e),
+    async deleteAccount(uid){await F.deleteDoc(ref(uid));await A.deleteUser(auth.currentUser)},
     signOut:()=>A.signOut(auth),
     async pull(uid){const d=await F.getDoc(ref(uid));return d.exists()?d.data():null},
     push:(uid,data,updated)=>F.setDoc(ref(uid),{data,updated}),
   };
   A.getRedirectResult(auth).catch(()=>{});
+  auth.useDeviceLanguage();
   A.onAuthStateChanged(auth,u=>window.onCloudUser(u));
 }catch(e){console.warn('Cloud sync unavailable',e);window.cloudState='failed';render()}
 </script>
