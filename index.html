@@ -452,7 +452,8 @@ function ensureDraft(day){
   // Set count always follows the routine.
   for(const ex of day.exercises){
     const x=S.draft.ex[ex.id]||(S.draft.ex[ex.id]={sets:[]});
-    const n=Math.max(1,ex.sets||1);x.sets=x.sets.slice(0,n);while(x.sets.length<n)x.sets.push({w:'',r:'',done:false});
+    // Set count follows the routine, plus or minus any sets added or removed today.
+    const n=Math.max(1,(ex.sets||1)+(x.extra||0));x.sets=x.sets.slice(0,n);while(x.sets.length<n)x.sets.push({w:'',r:'',done:false});
     if(!('alt' in x)||(x.alt&&!altOf(ex,x.alt)))x.alt=defaultAlt(ex);
   }
   return S.draft;
@@ -543,7 +544,7 @@ function renderToday(){
           <input class="field" inputmode="decimal" data-f="w" data-i="${i}" value="${esc(s.w!==''?s.w:wHint(sets,i,last))}" aria-label="Set ${i+1} weight">
           <input class="field" inputmode="numeric" data-f="r" data-i="${i}" value="${esc(s.r!==''?s.r:rHint(i,last,ex))}" aria-label="Set ${i+1} reps">
           <button class="check" data-a="done" data-i="${i}" aria-label="Complete set ${i+1}">${ic('check')}</button></div>`).join('')}
-      ${x?.note||noteOpen===ex.id?'':`<div class="ex-actions"><button class="text-btn" data-a="addnote">${ic('plus')}Add note</button></div>`}
+      <div class="ex-actions"><button class="text-btn" data-a="addset">${ic('plus')}Add set</button>${sets.length>1?`<button class="text-btn" data-a="rmset">${ic('minus')}Remove set</button>`:''}${x?.note||noteOpen===ex.id?'':`<button class="text-btn" data-a="addnote">${ic('plus')}Add note</button>`}</div>
       ${x?.note||noteOpen===ex.id?`<input class="note-field" data-note="1" value="${esc(x?.note)}" placeholder="Add a note" aria-label="Note">`:''}
     </div></section>`;
   }
@@ -901,6 +902,13 @@ document.addEventListener('click',async e=>{
           if(sets.every(x=>x.done))openNext(exId);
         }
       }
+      break;
+    }
+    case 'addset':case 'rmset':{
+      // Only changes today's workout; the routine keeps its set count.
+      const day=currentDay(),ex=day.exercises.find(e=>e.id===exId),x=ensureDraft(day).ex[exId];
+      const n=x.sets.length+(a==='addset'?1:-1);if(n<1)return;
+      x.extra=n-(ex.sets||1);ensureDraft(day);
       break;
     }
     case 'pickalt':{
