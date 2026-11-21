@@ -442,9 +442,12 @@ const exDone=(dr,id)=>{const xs=dr?.ex[id]?.sets;return !!xs&&xs.every(s=>s.done
 // Checked sets are saved to History as you go; the workout belongs to the day it was started.
 function syncSession(){
   const dr=S.draft,day=dr&&findDay(dr.dayId);if(!day)return;
-  const entries=day.exercises.map(ex=>{const x=dr.ex[ex.id],alt=altOf(ex,x?.alt)?x.alt:null;return {exId:ex.id,...(alt?{alt}:{}),name:exName(ex,alt),
-    sets:(x?.sets||[]).filter(s=>s.done).map(s=>({w:parseFloat(s.w)||0,r:parseInt(s.r)||0})).filter(s=>s.w||s.r),
-    note:(x?.note||'').trim()}}).filter(e=>e.sets.length);
+  // Each variation is its own entry, so sets done on the main lift and a substitute stay apart.
+  const entry=(ex,altId,v)=>{const alt=altOf(ex,altId)?altId:null;return {exId:ex.id,...(alt?{alt}:{}),name:exName(ex,alt),
+    sets:(v?.sets||[]).filter(s=>s.done).map(s=>({w:parseFloat(s.w)||0,r:parseInt(s.r)||0})).filter(s=>s.w||s.r),
+    note:(v?.note||'').trim()}};
+  const entries=day.exercises.flatMap(ex=>{const x=dr.ex[ex.id];if(!x)return [];
+    return [entry(ex,x.alt,x),...Object.entries(x.vars||{}).filter(([k])=>(k||null)!==(x.alt||null)).map(([k,v])=>entry(ex,k||null,v))]}).filter(e=>e.sets.length);
   let ses=S.sessions.find(s=>s.id===dr.sessionId);
   if(!entries.length){if(ses)S.sessions=S.sessions.filter(s=>s!==ses);dr.sessionId=null;return}
   if(!ses){ses={id:uid(),dayId:day.id,date:dr.started};S.sessions.push(ses);dr.sessionId=ses.id}
@@ -473,7 +476,7 @@ function checkComplete(){
   }).filter(Boolean);
   openSummary(day,ses.entries,prs,ses.duration);
 }
-const draftHasData=()=>S.draft&&Object.values(S.draft.ex).some(x=>x.sets.some(s=>s.done||s.w!==''||s.r!==''));
+const draftHasData=()=>S.draft&&Object.values(S.draft.ex).some(x=>[x,...Object.values(x.vars||{})].some(v=>v.sets.some(s=>s.done||s.w!==''||s.r!=='')));
 function ensureDraft(day){
   if(!S.draft||S.draft.dayId!==day.id)S.draft={dayId:day.id,started:new Date().toISOString(),ex:{}};
   // Set count always follows the routine.
@@ -1072,8 +1075,10 @@ document.addEventListener('click',async e=>{
     case 'pickalt':{
       const x=ensureDraft(currentDay()).ex[exId],v=b.dataset.alt||null;
       if((x.alt||null)===v)return;
-      // Unchecked sets switch to this variation's last time numbers.
-      x.alt=v;x.sets.forEach(s=>{if(!s.done)s.w=s.r=''});
+      // Each variation keeps its own sets, extra sets and note; switching just shows the other one.
+      x.vars=x.vars||{};x.vars[x.alt||'']={sets:x.sets,extra:x.extra||0,note:x.note||''};
+      const nv=x.vars[v||'']||{sets:[],extra:0,note:''};delete x.vars[v||''];
+      Object.assign(x,{alt:v,sets:nv.sets,extra:nv.extra,note:nv.note});ensureDraft(currentDay());
       break;
     }
     case 'excheck':{
