@@ -222,6 +222,15 @@ main:has(.gate){padding-bottom:calc(env(safe-area-inset-bottom) + 12px)}
 .row-card{padding:0}
 .row-head{display:flex;align-items:center;gap:4px;padding:6px 14px 6px 6px}
 .open-body{padding:0 14px 14px}
+.alts{display:flex;gap:6px;overflow-x:auto;margin:0 -14px 10px;padding:0 14px;scrollbar-width:none}
+.alts::-webkit-scrollbar{display:none}
+.alt{flex:none;padding:6px 12px;border-radius:999px;background:var(--fill);font-size:14px;font-weight:500;color:var(--text)}
+.alt.on{background:var(--accent);color:var(--on-accent);font-weight:600}
+.alt-row input{flex:1;min-width:0;border:none;background:none;outline:none;font-size:17px;height:50px}
+.alt-rm{width:26px;height:26px;border-radius:50%;background:var(--danger);color:#fff;display:grid;place-items:center;flex:none}
+.alt-rm .ic{width:16px;height:16px;stroke-width:3}
+#f-alts .cell.action{gap:8px}
+#f-alts .cell.action .ic{width:18px;height:18px}
 .open-info{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
 .open-info .text-btn{font-size:14px}
 .open-body .note{margin-top:4px;font-size:13px}
@@ -380,22 +389,33 @@ function nextDay(){
 }
 function currentDay(){const days=aDays();return days.find(d=>d.id===viewDayId)||(S.draft&&days.find(d=>d.id===S.draft.dayId))||nextDay()}
 // History belongs to one exercise on one day, so Hack Squat on Lower A and on Lower B stay separate.
-const matches=(e,ex)=>e.exId===ex.id;
-function historyFor(ex){
+// Each substitute (another machine or movement) keeps its own history too.
+const altOf=(ex,id)=>id?ex.alts?.find(a=>a.id===id)||null:null;
+const exName=(ex,alt)=>altOf(ex,alt)?.name||ex.name||'Untitled';
+// Default to whatever was used last time for this exercise.
+function defaultAlt(ex){
+  if(!ex.alts?.length)return null;
+  for(const s of sortedSessions()){if(s.id===S.draft?.sessionId)continue;const e=s.entries.find(e=>e.exId===ex.id);if(e)return altOf(ex,e.alt)?e.alt:null}
+  return null;
+}
+function curAlt(ex){const x=S.draft&&S.draft.dayId===findDayOf(ex)?.id?S.draft.ex[ex.id]:null;return x&&'alt' in x?x.alt:defaultAlt(ex)}
+const findDayOf=ex=>aDays().find(d=>d.exercises.includes(ex));
+const matches=(e,ex,alt)=>e.exId===ex.id&&(e.alt||null)===(alt||null);
+function historyFor(ex,alt=curAlt(ex)){
   const out=[];
-  for(const s of sortedSessions()){const e=s.entries.find(e=>matches(e,ex));if(e&&e.sets.length)out.push({date:s.date,sets:e.sets,note:e.note})}
+  for(const s of sortedSessions()){const e=s.entries.find(e=>matches(e,ex,alt));if(e&&e.sets.length)out.push({date:s.date,sets:e.sets,note:e.note})}
   return out;
 }
-function lastFor(ex){
+function lastFor(ex,alt=curAlt(ex)){
   const ss=sortedSessions();
-  for(const s of ss){if(s.id===S.draft?.sessionId)continue;const e=s.entries.find(e=>matches(e,ex));if(e&&e.sets.length)return {date:s.date,sets:e.sets,note:e.note}}
+  for(const s of ss){if(s.id===S.draft?.sessionId)continue;const e=s.entries.find(e=>matches(e,ex,alt));if(e&&e.sets.length)return {date:s.date,sets:e.sets,note:e.note}}
   return null;
 }
 const exDone=(dr,id)=>{const xs=dr?.ex[id]?.sets;return !!xs&&xs.every(s=>s.done)};
 // Checked sets are saved to History as you go; the workout belongs to the day it was started.
 function syncSession(){
   const dr=S.draft,day=dr&&findDay(dr.dayId);if(!day)return;
-  const entries=day.exercises.map(ex=>{const x=dr.ex[ex.id];return {exId:ex.id,name:ex.name,
+  const entries=day.exercises.map(ex=>{const x=dr.ex[ex.id],alt=altOf(ex,x?.alt)?x.alt:null;return {exId:ex.id,...(alt?{alt}:{}),name:exName(ex,alt),
     sets:(x?.sets||[]).filter(s=>s.done).map(s=>({w:parseFloat(s.w)||0,r:parseInt(s.r)||0})).filter(s=>s.w||s.r),
     note:(x?.note||'').trim()}}).filter(e=>e.sets.length);
   let ses=S.sessions.find(s=>s.id===dr.sessionId);
@@ -421,7 +441,7 @@ function checkComplete(){
   const ses=S.sessions.find(s=>s.id===dr.sessionId);if(!ses)return;
   const prs=ses.entries.map(e=>{
     const w=Math.max(...e.sets.map(s=>s.w));
-    const before=S.sessions.filter(s=>s!==ses).flatMap(s=>s.entries.filter(x=>x.exId===e.exId).flatMap(x=>x.sets.map(s=>s.w)));
+    const before=S.sessions.filter(s=>s!==ses).flatMap(s=>s.entries.filter(x=>x.exId===e.exId&&(x.alt||null)===(e.alt||null)).flatMap(x=>x.sets.map(s=>s.w)));
     return w&&before.length&&w>Math.max(...before)?{name:e.name,w}:null;
   }).filter(Boolean);
   openSummary(day,ses.entries,prs,ses.duration);
@@ -433,6 +453,7 @@ function ensureDraft(day){
   for(const ex of day.exercises){
     const x=S.draft.ex[ex.id]||(S.draft.ex[ex.id]={sets:[]});
     const n=Math.max(1,ex.sets||1);x.sets=x.sets.slice(0,n);while(x.sets.length<n)x.sets.push({w:'',r:'',done:false});
+    if(!('alt' in x)||(x.alt&&!altOf(ex,x.alt)))x.alt=defaultAlt(ex);
   }
   return S.draft;
 }
@@ -508,10 +529,12 @@ function renderToday(){
     const isOpen=openEx===ex.id;
     const today=sets.filter(s=>s.done).map(s=>({w:parseFloat(s.w)||0,r:parseInt(s.r)||0}));
     const sub=done?`Today: ${summarize(today)}`:last?`Last: ${summarize(last.sets)}`:target(ex);
+    const alt=curAlt(ex);
     const head=`<div class="row-head">${statusBtn(ex,done,sets.length)}
-      <button class="row-main" data-a="toggleex" aria-expanded="${isOpen}"><span class="cell-main"><span class="row-title">${esc(ex.name||'Untitled')}</span><span class="row-sub">${esc(sub)}</span></span>${ic(isOpen?'up':'down','chev')}</button></div>`;
+      <button class="row-main" data-a="toggleex" aria-expanded="${isOpen}"><span class="cell-main"><span class="row-title">${esc(exName(ex,alt))}</span><span class="row-sub">${esc(sub)}</span></span>${ic(isOpen?'up':'down','chev')}</button></div>`;
     if(!isOpen){body+=`<div class="card row-card${complete?' complete':''}" data-ex="${ex.id}">${head}</div>`;continue}
     body+=`<section class="card row-card open${complete?' complete':''}" data-ex="${ex.id}">${head}<div class="open-body">
+      ${ex.alts?.length?`<div class="alts" role="radiogroup" aria-label="Variation">${[{id:null,name:ex.name},...ex.alts].map(a=>`<button class="alt${(a.id||null)===(alt||null)?' on':''}" role="radio" aria-checked="${(a.id||null)===(alt||null)}" data-a="pickalt" data-alt="${a.id||''}">${esc(a.name||'Untitled')}</button>`).join('')}</div>`:''}
       <div class="open-info"><span>${target(ex)}${last?` · Last ${fmtShort(last.date)}`:''}</span><button class="text-btn" data-a="exhist">History</button></div>
       ${last?.note?`<div class="note">Last time: ${esc(last.note)}</div>`:''}
       ${ex.notes?`<div class="note">${esc(ex.notes)}</div>`:''}
@@ -570,7 +593,7 @@ function renderDay(day,r){
   const exs=day.exercises;
   const body=`<div class="section-title">Exercises</div><div class="group">${exs.map((ex,i)=>`<div class="cell" data-exid="${ex.id}"${editing?'':' data-a="exopen" role="button"'}>
       ${editing?`<button class="mini danger" data-a="exdel" aria-label="Delete">${ic('trash')}</button>`:''}
-      <div class="cell-main"><div class="cell-title">${esc(ex.name||'Untitled')}</div><div class="cell-sub">${target(ex)}</div></div>
+      <div class="cell-main"><div class="cell-title">${esc(ex.name||'Untitled')}</div><div class="cell-sub">${target(ex)}${ex.alts?.length?` · or ${esc(ex.alts.map(a=>a.name).join(', '))}`:''}</div></div>
       ${editing?`<button class="mini" data-a="exup"${i?'':' disabled'} aria-label="Move up">${ic('up')}</button><button class="mini" data-a="exdown"${i<exs.length-1?'':' disabled'} aria-label="Move down">${ic('down')}</button>`:ic('chev','chev')}
     </div>`).join('')}
     <button class="cell action" data-a="exadd">${ic('plus')}Add exercise</button></div>
@@ -725,9 +748,13 @@ function openExSheet(dayId,exId){
       <label class="frow"><span>Notes</span><input id="f-notes" value="${esc(ex?.notes)}" placeholder="Optional"></label>
     </div>
     <p class="footnote">Leave Reps to empty for a fixed rep count.</p>
+    <div class="section-title">Substitutes</div>
+    <div class="group" id="f-alts">${(ex?.alts||[]).map(altRow).join('')}<button class="cell action" data-a="altadd">${ic('plus')}Add substitute</button></div>
+    <p class="footnote">Another machine or movement you can do instead, like Dumbbell Fly for Machine Chest Fly. Pick it in Today. Each one keeps its own history.</p>
     ${ex?`<div class="group" style="margin-top:28px"><button class="cell destructive" data-a="exdelete">Delete exercise</button></div>`:''}`);
   if(!ex)setTimeout(()=>$('#f-name').focus(),320);
 }
+const altRow=a=>`<div class="frow alt-row"><input class="alt-input" data-id="${a?.id||''}" value="${esc(a?.name)}" placeholder="Substitute name" autocomplete="off"><button class="alt-rm" data-a="altrm" aria-label="Remove substitute">${ic('minus')}</button></div>`;
 function openDaySheet(dayId){
   const day=findDay(dayId);
   sheetCtx={dayId,routineId:routeRoutine};
@@ -744,10 +771,10 @@ function openRoutineSheet(id){
     <p class="footnote">For example Upper Lower, Push Pull Legs, or Summer Cut.</p>`);
   setTimeout(()=>$('#f-name').focus(),320);
 }
-function openExHist(ex){
-  const list=historyFor(ex),all=list.flatMap(h=>h.sets);
+function openExHist(ex,alt=null){
+  const list=historyFor(ex,alt),all=list.flatMap(h=>h.sets);
   const best=all.reduce((b,s)=>!b||s.w>b.w||(s.w===b.w&&s.r>b.r)?s:b,null);
-  openSheet(`${sheetBar(ex.name||'Exercise','Close')}
+  openSheet(`${sheetBar(exName(ex,alt),'Close')}
     ${list.length?`<div class="stats"><div class="stat"><div class="stat-label">Heaviest set</div><div class="stat-value">${best.w?`${best.w} ${S.units}`:plural(best.r,'rep')}</div></div>
       <div class="stat"><div class="stat-label">Times logged</div><div class="stat-value">${list.length}</div></div></div>
       <div class="section-title">Sessions</div><div class="group">${list.map(h=>`<div class="cell static"><div class="cell-main"><div class="cell-title">${fmtMed(h.date)}</div>${chips(h.sets)}${noteLine(h.note)}</div></div>`).join('')}</div>`
@@ -876,6 +903,13 @@ document.addEventListener('click',async e=>{
       }
       break;
     }
+    case 'pickalt':{
+      const x=ensureDraft(currentDay()).ex[exId],v=b.dataset.alt||null;
+      if((x.alt||null)===v)return;
+      // Unchecked sets switch to this variation's last time numbers.
+      x.alt=v;x.sets.forEach(s=>{if(!s.done)s.w=s.r=''});
+      break;
+    }
     case 'excheck':{
       const day=currentDay(),ex=day.exercises.find(e=>e.id===exId),x=ensureDraft(day).ex[exId];
       if(x.sets.every(s=>s.done))x.sets.forEach(s=>s.done=false);
@@ -892,7 +926,7 @@ document.addEventListener('click',async e=>{
     case 'toggleex':openEx=openEx===exId?null:exId;if(openEx)afterRender=scrollToEx(exId);break;
     case 'addnote':noteOpen=exId;afterRender=()=>main.querySelector(`[data-ex="${exId}"] .note-field`)?.focus();break;
     case 'tipok':S.tipSeen=true;break;
-    case 'exhist':openExHist(currentDay().exercises.find(x=>x.id===exId));return;
+    case 'exhist':{const ex=currentDay().exercises.find(x=>x.id===exId);openExHist(ex,curAlt(ex));return}
     case 'toggleedit':editing=!editing;break;
     case 'openday':routeDay=cellDay.id;editing=false;render();scrollTo(0,0);return;
     case 'back':if(routeDay)routeDay=null;else routeRoutine=null;editing=false;break;
@@ -953,11 +987,14 @@ document.addEventListener('click',async e=>{
       rDay.exercises.splice(rEi,1);if(!rDay.exercises.length)editing=false;break;
     }
     case 'step':{const o=$('#f-sets');o.value=o.textContent=Math.min(20,Math.max(1,+o.textContent+ +b.dataset.d));return}
+    case 'altadd':{b.insertAdjacentHTML('beforebegin',altRow(null));b.previousElementSibling.querySelector('input').focus();return}
+    case 'altrm':b.closest('.alt-row').remove();return;
     case 'exsave':{
       const name=$('#f-name').value.trim();
       if(!name){$('#f-name').focus();return}
       const d=findDay(sheetCtx.dayId);
-      const vals={name,sets:+$('#f-sets').textContent,repsMin:parseInt($('#f-rmin').value)||'',repsMax:parseInt($('#f-rmax').value)||'',notes:$('#f-notes').value.trim()};
+      const alts=[...document.querySelectorAll('.alt-input')].map(i=>({id:i.dataset.id||uid(),name:i.value.trim()})).filter(a=>a.name);
+      const vals={name,sets:+$('#f-sets').textContent,repsMin:parseInt($('#f-rmin').value)||'',repsMax:parseInt($('#f-rmax').value)||'',notes:$('#f-notes').value.trim(),alts};
       if(vals.repsMin&&vals.repsMax&&vals.repsMax<vals.repsMin)[vals.repsMin,vals.repsMax]=[vals.repsMax,vals.repsMin];
       const ex=d.exercises.find(x=>x.id===sheetCtx.exId);
       if(ex)Object.assign(ex,vals);else d.exercises.push({id:uid(),...vals});
