@@ -188,6 +188,7 @@ main:has(.gate){padding-bottom:calc(env(safe-area-inset-bottom) + 12px)}
 .stat{background:var(--card);border-radius:12px;padding:12px 14px;box-shadow:var(--shadow)}
 .stat-label{font-size:13px;color:var(--muted)}
 .stat-value{font-size:22px;font-weight:700;margin-top:2px;font-variant-numeric:tabular-nums}
+.stats-from{margin:-6px 4px 12px}
 .stat-sub{font-size:12px;color:var(--muted);margin-top:1px}
 .seg-wide{width:100%;margin:4px 0 14px}
 .chart-card{padding:14px 14px 10px}
@@ -645,9 +646,11 @@ const e1rm=x=>x.w?x.w*(1+Math.min(x.r,15)/30):x.r;
 const weekStart=d=>{const x=new Date(d);x.setHours(0,0,0,0);x.setDate(x.getDate()-(x.getDay()+6)%7);return x};
 const round1=v=>Math.round(v*10)/10;
 // Every lift by name, oldest first, with its best set each session.
+// Progress only counts workouts from the chosen start date; older ones stay in the Workouts list.
+const statSessions=()=>S.sessions.filter(s=>!S.statsFrom||s.date>=S.statsFrom).sort((a,b)=>a.date.localeCompare(b.date));
 function liftSeries(){
   const m=new Map();
-  for(const s of [...S.sessions].sort((a,b)=>a.date.localeCompare(b.date)))for(const e of s.entries){
+  for(const s of statSessions())for(const e of s.entries){
     const sets=e.sets.filter(x=>x.r>0);if(!sets.length)continue;
     const best=sets.reduce((b,x)=>e1rm(x)>e1rm(b)?x:b),k=e.name.trim();
     if(!m.has(k))m.set(k,[]);
@@ -695,14 +698,16 @@ function spark(vals){
   return `<svg class="spark" viewBox="0 0 ${W} ${H}" aria-hidden="true"><path d="${pts}"/></svg>`;
 }
 function renderStats(){
-  const ss=[...S.sessions].sort((a,b)=>a.date.localeCompare(b.date)),now=new Date(),wk=weekStart(now).getTime();
-  // Consistency
-  const weeks=[];for(let i=11;i>=0;i--){const t=new Date(wk);t.setDate(t.getDate()-7*i);weeks.push({x:t.getTime(),y:0})}
+  const ss=statSessions(),now=new Date(),wk=weekStart(now).getTime();
+  const from=S.statsFrom?weekStart(S.statsFrom).getTime():0;
+  // Consistency: up to 12 weeks, never before the start date.
+  const weeks=[];for(let i=11;i>=0;i--){const t=new Date(wk);t.setDate(t.getDate()-7*i);if(t.getTime()>=from)weeks.push({x:t.getTime(),y:0})}
+  const W=weeks.length;
   for(const s of ss){const t=weekStart(s.date).getTime(),w=weeks.find(w=>w.x===t);if(w)w.y++}
-  weeks.forEach((w,i)=>w.tip=`${i===11?'This week':`Week of ${fmtShort(w.x)}`}: <b>${plural(w.y,'workout')}</b>`);
-  const thisWeek=weeks[11].y,last30=ss.filter(s=>now-new Date(s.date)<30*864e5).length;
-  let streak=0;for(let i=thisWeek>=3?11:10;i>=0&&weeks[i].y>=3;i--)streak++;
-  const avg=round1(weeks.slice(3,11).reduce((t,w)=>t+w.y,0)/8);
+  weeks.forEach((w,i)=>w.tip=`${i===W-1?'This week':`Week of ${fmtShort(w.x)}`}: <b>${plural(w.y,'workout')}</b>`);
+  const thisWeek=weeks[W-1].y,last30=ss.filter(s=>now-new Date(s.date)<30*864e5).length;
+  let streak=0;for(let i=thisWeek>=3?W-1:W-2;i>=0&&weeks[i].y>=3;i--)streak++;
+  const done=weeks.slice(Math.max(0,W-9),W-1),avg=done.length?round1(done.reduce((t,w)=>t+w.y,0)/done.length):null;
   // Lifts
   const lifts=liftSeries();
   let prs=0;for(const [,pts] of lifts)pts.forEach((p,i)=>{if(i&&now-new Date(p.date)<30*864e5&&p.v>Math.max(...pts.slice(0,i).map(q=>q.v)))prs++});
@@ -710,9 +715,11 @@ function renderStats(){
   // Default to the most logged heavy lift (best sets of 12 reps or fewer).
   if(!lifts.has(statEx))statEx=(ranked.find(([,p])=>p.every(q=>q.best.r<=12&&q.best.w))||ranked[0])?.[0]||null;
   const tile=(l,v,sub='')=>`<div class="stat"><div class="stat-label">${l}</div><div class="stat-value">${v}</div>${sub?`<div class="stat-sub">${sub}</div>`:''}</div>`;
-  let body=`<div class="stats">${tile('This week',`${thisWeek} of 3`,thisWeek>=3?'Goal reached':`${plural(3-thisWeek,'workout')} to go`)}
+  let body=S.statsFrom?`<p class="chart-note stats-from">Tracking since ${fmtMed(S.statsFrom)}. Earlier workouts are in Workouts.</p>`:'';
+  if(!ss.length)body+=`<div class="card chart-card"><div class="chart-big">Fresh start</div><div class="chart-sub">Your stats begin with your next workout.</div></div>`;
+  body+=`<div class="stats">${tile('This week',`${thisWeek} of 3`,thisWeek>=3?'Goal reached':`${plural(3-thisWeek,'workout')} to go`)}
     ${tile('Last 30 days',last30,last30===1?'workout':'workouts')}
-    ${tile('Weekly average',avg,'over the last 8 weeks')}
+    ${tile('Weekly average',avg??'Not yet',avg===null?'after your first full week':`over the last ${plural(done.length,'week')}`)}
     ${tile('New bests',prs,'in the last 30 days')}</div>`;
   body+=`<div class="section-title">Consistency</div><div class="card chart-card">
     <div class="chart-head"><div><div class="chart-big">${streak?plural(streak,'week'):'No streak yet'}</div><div class="chart-sub">${streak?'in a row with 3 or more workouts':'Train 3 times this week to start one'}</div></div></div>
@@ -779,6 +786,10 @@ function renderSettings(){
     <div class="group" style="margin-top:12px">
       <div class="cell static"><div class="cell-main"><div class="cell-title">Appearance</div></div>
         <div class="seg seg3">${[['system','System'],['light','Light'],['dark','Dark']].map(([k,l])=>`<button data-a="theme" data-t="${k}" class="${(S.theme||'system')===k?'on':''}">${l}</button>`).join('')}</div></div></div>
+    <div class="section-title">Progress</div><div class="group">
+      <div class="cell static"><div class="cell-main"><div class="cell-title">Tracking since</div></div><span class="cell-value">${S.statsFrom?fmtMed(S.statsFrom):'All workouts'}</span></div>
+      <button class="cell action" data-a="statsreset">Start fresh today</button>${S.statsFrom?`<button class="cell action" data-a="statsall">Include all workouts</button>`:''}</div>
+    <p class="footnote">Progress stats only count workouts from this date. Older workouts stay in your history and still fill in last time's numbers. Body weight always shows everything.</p>
     <div class="section-title">Account</div><div class="group">${user?`
       <div class="cell static"><div class="cell-main"><div class="cell-title">${user.providerData?.some(p=>p.providerId==='google.com')?'Google':'Email'}</div></div><span class="cell-value">${esc(user.email||'Signed in')}</span></div>
       <button class="cell action" data-a="signout">Sign Out</button></div>
@@ -1166,6 +1177,10 @@ document.addEventListener('click',async e=>{
       if(!await ask({title:'Delete workout?',msg:'This removes it from your history.',ok:'Delete',danger:true}))return;
       S.sessions=S.sessions.filter(s=>s.id!==sheetCtx.sesId);closeSheet();break;
     case 'bwopen':openWeights();return;
+    case 'statsreset':
+      if(!await ask({title:'Start fresh today?',msg:'Progress stats will only count workouts from today on. Nothing is deleted.',ok:'Start Fresh'}))return;
+      S.statsFrom=(()=>{const d=new Date();d.setHours(0,0,0,0);return d.toISOString()})();break;
+    case 'statsall':delete S.statsFrom;break;
     case 'histview':histView=b.dataset.v;render();scrollTo(0,0);return;
     case 'statex':statEx=b.dataset.k;render();$('#strength')?.scrollIntoView({behavior:'smooth',block:'start'});return;
     case 'bwadd':{
