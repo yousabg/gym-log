@@ -225,6 +225,7 @@ main:has(.gate){padding-bottom:calc(env(safe-area-inset-bottom) + 12px)}
 @keyframes pop{from{transform:scale(1.1);opacity:0}}
 .alert h3{font-size:17px;margin:20px 16px 4px}
 .alert p{font-size:13px;margin:0 16px 18px;color:var(--text)}
+.alert-field{display:block;width:calc(100% - 32px);margin:-6px 16px 16px;padding:8px 10px;border:.5px solid var(--sep);border-radius:8px;background:var(--card);color:var(--text);font:inherit;font-size:15px;outline:none}
 .alert-btns{display:flex;border-top:.5px solid var(--sep)}
 .alert-btns button{flex:1;height:44px;color:var(--accent);font-size:17px}
 .alert-btns button+button{border-left:.5px solid var(--sep)}
@@ -254,6 +255,8 @@ main:has(.gate){padding-bottom:calc(env(safe-area-inset-bottom) + 12px)}
 .alts{display:flex;gap:6px;overflow-x:auto;margin:0 -14px 10px;padding:0 14px;scrollbar-width:none}
 .alts::-webkit-scrollbar{display:none}
 .alt{flex:none;padding:6px 12px;border-radius:999px;background:var(--fill);font-size:14px;font-weight:500;color:var(--text)}
+.alt.add{display:inline-flex;align-items:center;gap:4px;background:none;color:var(--accent);padding-left:8px}
+.alt.add .ic{width:15px;height:15px}
 .alt.on{background:var(--accent);color:var(--on-accent);font-weight:600}
 .alt-row input{flex:1;min-width:0;border:none;background:none;outline:none;font-size:17px;height:50px}
 .alt-rm{width:26px;height:26px;border-radius:50%;background:var(--danger);color:#fff;display:grid;place-items:center;flex:none}
@@ -393,13 +396,15 @@ window.onCloudUser=u=>{user=u;window.cloudState=u?'in':'out';render();if(u)pull(
 window.cloudState='loading';
 function toast(t){const el=$('#toast');el.innerHTML=ic('check')+esc(t);el.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>el.classList.remove('show'),1800)}
 function move(arr,i,d){const j=i+d;if(j<0||j>=arr.length)return;[arr[i],arr[j]]=[arr[j],arr[i]]}
-function ask({title,msg='',ok='OK',cancel='Cancel',danger=false}){
+function ask({title,msg='',ok='OK',cancel='Cancel',danger=false,field=null}){
   return new Promise(res=>{
     const w=$('#alert');
-    w.innerHTML=`<div class="alert" role="alertdialog"><h3>${esc(title)}</h3>${msg?`<p>${esc(msg)}</p>`:'<p></p>'}
+    w.innerHTML=`<div class="alert" role="alertdialog"><h3>${esc(title)}</h3>${msg?`<p>${esc(msg)}</p>`:'<p></p>'}${field!==null?`<input class="alert-field" placeholder="${esc(field)}" autocomplete="off" enterkeyhint="done">`:''}
       <div class="alert-btns">${cancel?`<button data-r="0">${esc(cancel)}</button>`:''}<button data-r="1" class="${danger?'danger':'strong'}">${esc(ok)}</button></div></div>`;
-    w.hidden=false;
-    w.onclick=e=>{const b=e.target.closest('[data-r]');if(!b)return;w.hidden=true;res(b.dataset.r==='1')};
+    w.hidden=false;const inp=w.querySelector('.alert-field');
+    const done=ok=>{w.hidden=true;res(inp?ok&&inp.value.trim():ok)};
+    if(inp){inp.focus();inp.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();done(true)}}}
+    w.onclick=e=>{const b=e.target.closest('[data-r]');if(!b)return;done(b.dataset.r==='1')};
   });
 }
 function openSheet(html){$('#sheetBody').innerHTML='<div class="grabber"></div>'+html;$('#sheet').classList.add('open')}
@@ -477,6 +482,13 @@ function checkComplete(){
     return w&&before.length&&w>Math.max(...before)?{name:e.name,w}:null;
   }).filter(Boolean);
   openSummary(day,ses.entries,prs,ses.duration);
+}
+// Each variation keeps its own sets, extra sets and note; switching just shows the other one.
+function switchAlt(exId,v){
+  const x=ensureDraft(currentDay()).ex[exId];if((x.alt||null)===v)return false;
+  x.vars=x.vars||{};x.vars[x.alt||'']={sets:x.sets,extra:x.extra||0,note:x.note||''};
+  const nv=x.vars[v||'']||{sets:[],extra:0,note:''};delete x.vars[v||''];
+  Object.assign(x,{alt:v,sets:nv.sets,extra:nv.extra,note:nv.note});ensureDraft(currentDay());return true;
 }
 const draftHasData=()=>S.draft&&Object.values(S.draft.ex).some(x=>[x,...Object.values(x.vars||{})].some(v=>v.sets.some(s=>s.done||s.w!==''||s.r!=='')));
 function ensureDraft(day){
@@ -567,7 +579,7 @@ function renderToday(){
       <button class="row-main" data-a="toggleex" aria-expanded="${isOpen}"><span class="cell-main"><span class="row-title">${esc(exName(ex,alt))}</span><span class="row-sub">${esc(sub)}</span></span>${ic(isOpen?'up':'down','chev')}</button></div>`;
     if(!isOpen){body+=`<div class="card row-card${complete?' complete':''}" data-ex="${ex.id}">${head}</div>`;continue}
     body+=`<section class="card row-card open${complete?' complete':''}" data-ex="${ex.id}">${head}<div class="open-body">
-      ${ex.alts?.length?`<div class="alts" role="radiogroup" aria-label="Variation">${[{id:null,name:ex.name},...ex.alts].map(a=>`<button class="alt${(a.id||null)===(alt||null)?' on':''}" role="radio" aria-checked="${(a.id||null)===(alt||null)}" data-a="pickalt" data-alt="${a.id||''}">${esc(a.name||'Untitled')}</button>`).join('')}</div>`:''}
+      <div class="alts" role="radiogroup" aria-label="Variation">${ex.alts?.length?[{id:null,name:ex.name},...ex.alts].map(a=>`<button class="alt${(a.id||null)===(alt||null)?' on':''}" role="radio" aria-checked="${(a.id||null)===(alt||null)}" data-a="pickalt" data-alt="${a.id||''}">${esc(a.name||'Untitled')}</button>`).join(''):''}<button class="alt add" data-a="altnew">${ic('plus')}${ex.alts?.length?'Add':'Add substitute'}</button></div>
       <div class="open-info"><span>${target(ex)}${last?` · Last ${fmtShort(last.date)}`:''}</span><button class="text-btn" data-a="exhist">History</button></div>
       ${last?.note?`<div class="note">Last time: ${esc(last.note)}</div>`:''}
       ${ex.notes?`<div class="note">${esc(ex.notes)}</div>`:''}
@@ -1075,12 +1087,15 @@ document.addEventListener('click',async e=>{
       break;
     }
     case 'pickalt':{
-      const x=ensureDraft(currentDay()).ex[exId],v=b.dataset.alt||null;
-      if((x.alt||null)===v)return;
-      // Each variation keeps its own sets, extra sets and note; switching just shows the other one.
-      x.vars=x.vars||{};x.vars[x.alt||'']={sets:x.sets,extra:x.extra||0,note:x.note||''};
-      const nv=x.vars[v||'']||{sets:[],extra:0,note:''};delete x.vars[v||''];
-      Object.assign(x,{alt:v,sets:nv.sets,extra:nv.extra,note:nv.note});ensureDraft(currentDay());
+      if(!switchAlt(exId,b.dataset.alt||null))return;
+      break;
+    }
+    case 'altnew':{
+      // Adds the substitute to the routine and switches to it for today.
+      const ex=currentDay().exercises.find(e=>e.id===exId);if(!ex)return;
+      const name=await ask({title:'Add Substitute',msg:`Another exercise to do instead of ${exName(ex,null)}. It keeps its own history.`,ok:'Add',field:'Exercise name'});
+      if(!name)return;
+      const al={id:uid(),name};(ex.alts=ex.alts||[]).push(al);switchAlt(exId,al.id);
       break;
     }
     case 'excheck':{
