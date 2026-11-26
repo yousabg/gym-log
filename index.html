@@ -71,7 +71,7 @@ h1.large{font-size:34px;font-weight:700;letter-spacing:.01em;margin:0;line-heigh
 .snum{color:var(--muted);font-weight:600;text-align:center;font-variant-numeric:tabular-nums}
 .field{width:100%;min-width:0;height:42px;border:none;border-radius:10px;background:var(--fill);text-align:center;font-size:17px;font-weight:600;font-variant-numeric:tabular-nums;outline:none;transition:background .15s}
 .field:focus{box-shadow:inset 0 0 0 2px var(--accent)}
-.field::placeholder{color:var(--faint);font-weight:500}
+.field::placeholder{color:var(--muted);font-weight:500}
 .check{height:42px;border-radius:10px;background:var(--fill);color:var(--faint);display:grid;place-items:center;transition:background .15s,color .15s}
 .srow.done .check{background:var(--accent);color:var(--on-accent)}
 .srow.done .field{background:var(--accent-soft)}
@@ -573,8 +573,8 @@ function renderToday(){
       ${ex.notes?`<div class="note">${esc(ex.notes)}</div>`:''}
       <div class="grid grid-head"><span>Set</span><span>${S.units}</span><span>Reps</span><span></span></div>
       ${sets.map((s,i)=>`<div class="grid srow${s.done?' done':''}"><span class="snum">${i+1}</span>
-          <input class="field" inputmode="decimal" data-f="w" data-i="${i}" value="${esc(s.w!==''?s.w:wHint(sets,i,last))}" aria-label="Set ${i+1} weight">
-          <input class="field" inputmode="numeric" data-f="r" data-i="${i}" value="${esc(s.r!==''?s.r:rHint(i,last,ex))}" aria-label="Set ${i+1} reps">
+          <input class="field" inputmode="decimal" data-f="w" data-i="${i}" value="${esc(s.w)}" placeholder="${esc(wHint(sets,i,last))}" aria-label="Set ${i+1} weight">
+          <input class="field" inputmode="numeric" data-f="r" data-i="${i}" value="${esc(s.r)}" placeholder="${esc(rHint(i,last,ex))}" aria-label="Set ${i+1} reps">
           <button class="check" data-a="done" data-i="${i}" aria-label="Complete set ${i+1}">${ic('check')}</button></div>`).join('')}
       <div class="ex-actions"><button class="text-btn" data-a="addset">${ic('plus')}Add set</button>${sets.length>1?`<button class="text-btn" data-a="rmset">${ic('minus')}Remove set</button>`:''}${x?.note||noteOpen===ex.id?'':`<button class="text-btn" data-a="addnote">${ic('plus')}Add note</button>`}</div>
       ${x?.note||noteOpen===ex.id?`<input class="note-field" data-note="1" value="${esc(x?.note)}" placeholder="Add a note" aria-label="Note">`:''}
@@ -1021,7 +1021,7 @@ main.addEventListener('input',e=>{
   if(t.dataset.note)x.note=t.value;else x.sets[+t.dataset.i][t.dataset.f]=t.value.trim();
   if(t.dataset.f==='w'){
     const card=t.closest('[data-ex]'),last=lastFor(currentDay().exercises.find(e=>e.id===card.dataset.ex));
-    card.querySelectorAll('[data-f=w]').forEach(el=>{const i=+el.dataset.i;if(i>+t.dataset.i&&x.sets[i].w==='')el.value=wHint(x.sets,i,last)});
+    card.querySelectorAll('[data-f=w]').forEach(el=>{const i=+el.dataset.i;if(i>+t.dataset.i&&x.sets[i].w==='')el.placeholder=wHint(x.sets,i,last)});
   }
   syncSession();save();
   const db=$('[data-a=discard]');if(db)db.hidden=false;
@@ -1057,8 +1057,8 @@ document.addEventListener('click',async e=>{
       {
         const i=+b.dataset.i,s=sets[i],card=b.closest('[data-ex]');
         if(!s.done){
-          if(s.w==='')s.w=card.querySelector(`[data-f=w][data-i="${i}"]`).value;
-          if(s.r==='')s.r=card.querySelector(`[data-f=r][data-i="${i}"]`).value;
+          if(s.w==='')s.w=card.querySelector(`[data-f=w][data-i="${i}"]`).placeholder;
+          if(s.r==='')s.r=card.querySelector(`[data-f=r][data-i="${i}"]`).placeholder;
         }
         s.done=!s.done;
         if(s.done){
