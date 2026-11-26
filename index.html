@@ -75,6 +75,11 @@ h1.large{font-size:34px;font-weight:700;letter-spacing:.01em;margin:0;line-heigh
 .check{height:42px;border-radius:10px;background:var(--fill);color:var(--faint);display:grid;place-items:center;transition:background .15s,color .15s}
 .srow.done .check{background:var(--accent);color:var(--on-accent)}
 .srow.done .field{background:var(--accent-soft)}
+.drow{margin-top:6px}
+.drow.done .field{background:var(--accent-soft)}
+.dlabel{font-size:10px;text-transform:uppercase;letter-spacing:.3px}
+.drow .field{height:36px;font-size:16px}
+.check.rm{height:36px;background:none;color:var(--muted)}
 .ex-actions{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:12px}
 .ex-actions .text-btn{font-size:14px}
 .text-btn{display:flex;align-items:center;gap:5px;color:var(--accent);font-size:15px;font-weight:500}
@@ -302,7 +307,10 @@ const fmtMed=d=>new Date(d).toLocaleDateString(undefined,{weekday:'short',month:
 const plural=(n,w)=>`${n} ${w}${n===1?'':'s'}`;
 const setTxt=s=>s.w?`${s.w} × ${s.r||0}`:plural(s.r,'rep');
 const noteLine=n=>n?`<div class="last-note">${esc(n)}</div>`:'';
-const chips=sets=>`<div class="set-chips">${sets.map(s=>`<span class="set-chip">${setTxt(s)}</span>`).join('')}</div>`;
+const dropNum=d=>d.w?`${d.w} × ${d.r||0}`:plural(d.r,'rep');
+// A set with its drops, e.g. "145 × 6, drop 125 × 3".
+const setFull=s=>setTxt(s)+(s.drops?.length?`, drop ${s.drops.map(dropNum).join(', ')}`:'');
+const chips=sets=>`<div class="set-chips">${sets.map(s=>`<span class="set-chip">${setFull(s)}</span>`).join('')}</div>`;
 const blankSets=n=>Array.from({length:Math.max(1,n||1)},()=>({w:'',r:'',done:false}));
 function fmtReps(ex){
   const a=ex.repsMin,b=ex.repsMax;
@@ -451,7 +459,7 @@ function syncSession(){
   const dr=S.draft,day=dr&&findDay(dr.dayId);if(!day)return;
   // Each variation is its own entry, so sets done on the main lift and a substitute stay apart.
   const entry=(ex,altId,v)=>{const alt=altOf(ex,altId)?altId:null;return {exId:ex.id,...(alt?{alt}:{}),name:exName(ex,alt),
-    sets:(v?.sets||[]).filter(s=>s.done).map(s=>({w:parseFloat(s.w)||0,r:parseInt(s.r)||0})).filter(s=>s.w||s.r),
+    sets:(v?.sets||[]).filter(s=>s.done).map(logSet).filter(s=>s.w||s.r),
     note:(v?.note||'').trim()}};
   const entries=day.exercises.flatMap(ex=>{const x=dr.ex[ex.id];if(!x)return [];
     return [entry(ex,x.alt,x),...Object.entries(x.vars||{}).filter(([k])=>(k||null)!==(x.alt||null)).map(([k,v])=>entry(ex,k||null,v))]}).filter(e=>e.sets.length);
@@ -490,6 +498,9 @@ function switchAlt(exId,v){
   const nv=x.vars[v||'']||{sets:[],extra:0,note:''};delete x.vars[v||''];
   Object.assign(x,{alt:v,sets:nv.sets,extra:nv.extra,note:nv.note});ensureDraft(currentDay());return true;
 }
+// Saved form of a draft set; drops with no reps are left out.
+function logSet(s){const o={w:parseFloat(s.w)||0,r:parseInt(s.r)||0};
+  const d=(s.drops||[]).map(d=>({w:parseFloat(d.w)||0,r:parseInt(d.r)||0})).filter(d=>d.r);if(d.length)o.drops=d;return o}
 const draftHasData=()=>S.draft&&Object.values(S.draft.ex).some(x=>[x,...Object.values(x.vars||{})].some(v=>v.sets.some(s=>s.done||s.w!==''||s.r!=='')));
 function ensureDraft(day){
   if(!S.draft||S.draft.dayId!==day.id)S.draft={dayId:day.id,started:new Date().toISOString(),ex:{}};
@@ -540,8 +551,8 @@ let openEx=null,noteOpen=null,afterRender=null;
 function summarize(sets){
   if(!sets.length)return '';
   const f=sets[0];
-  if(sets.every(s=>s.w===f.w&&s.r===f.r))return f.w?`${sets.length} × ${f.r} at ${f.w} ${S.units}`:`${sets.length} × ${f.r}`;
-  return sets.map(setTxt).join(', ');
+  if(sets.every(s=>s.w===f.w&&s.r===f.r&&!s.drops?.length))return f.w?`${sets.length} × ${f.r} at ${f.w} ${S.units}`:`${sets.length} × ${f.r}`;
+  return sets.map(setFull).join(' · ');
 }
 const scrollToEx=id=>()=>main.querySelector(`[data-ex="${id}"]`)?.scrollIntoView({behavior:'smooth',block:'nearest'});
 
@@ -572,7 +583,7 @@ function renderToday(){
     const x=dr?.ex[ex.id];
     const done=dr?sets.filter(s=>s.done).length:0,complete=dr&&done===sets.length;
     const isOpen=openEx===ex.id;
-    const today=sets.filter(s=>s.done).map(s=>({w:parseFloat(s.w)||0,r:parseInt(s.r)||0}));
+    const today=sets.filter(s=>s.done).map(logSet);
     const sub=done?`Today: ${summarize(today)}`:last?`Last: ${summarize(last.sets)}`:target(ex);
     const alt=curAlt(ex);
     const head=`<div class="row-head">${statusBtn(ex,done,sets.length)}
@@ -587,8 +598,11 @@ function renderToday(){
       ${sets.map((s,i)=>`<div class="grid srow${s.done?' done':''}"><span class="snum">${i+1}</span>
           <input class="field" inputmode="decimal" data-f="w" data-i="${i}" value="${esc(s.w)}" placeholder="${esc(wHint(sets,i,last))}" aria-label="Set ${i+1} weight">
           <input class="field" inputmode="numeric" data-f="r" data-i="${i}" value="${esc(s.r)}" placeholder="${esc(rHint(i,last,ex))}" aria-label="Set ${i+1} reps">
-          <button class="check" data-a="done" data-i="${i}" aria-label="Complete set ${i+1}">${ic('check')}</button></div>`).join('')}
-      <div class="ex-actions"><button class="text-btn" data-a="addset">${ic('plus')}Add set</button>${sets.length>1?`<button class="text-btn" data-a="rmset">${ic('minus')}Remove set</button>`:''}${x?.note||noteOpen===ex.id?'':`<button class="text-btn" data-a="addnote">${ic('plus')}Add note</button>`}</div>
+          <button class="check" data-a="done" data-i="${i}" aria-label="Complete set ${i+1}">${ic('check')}</button></div>${(s.drops||[]).map((d,j)=>`<div class="grid drow${s.done?' done':''}"><span class="snum dlabel">Drop</span>
+          <input class="field" inputmode="decimal" data-f="w" data-i="${i}" data-d="${j}" value="${esc(d.w)}" placeholder="${esc(s.w||wHint(sets,i,last))}" aria-label="Set ${i+1} drop ${j+1} weight">
+          <input class="field" inputmode="numeric" data-f="r" data-i="${i}" data-d="${j}" value="${esc(d.r)}" placeholder="Reps" aria-label="Set ${i+1} drop ${j+1} reps">
+          <button class="check rm" data-a="rmdrop" data-i="${i}" data-d="${j}" aria-label="Remove drop">${ic('minus')}</button></div>`).join('')}`).join('')}
+      <div class="ex-actions"><button class="text-btn" data-a="addset">${ic('plus')}Add set</button><button class="text-btn" data-a="adddrop">${ic('plus')}Add drop</button>${sets.length>1?`<button class="text-btn" data-a="rmset">${ic('minus')}Remove set</button>`:''}${x?.note||noteOpen===ex.id?'':`<button class="text-btn" data-a="addnote">${ic('plus')}Add note</button>`}</div>
       ${x?.note||noteOpen===ex.id?`<input class="note-field" data-note="1" value="${esc(x?.note)}" placeholder="Add a note" aria-label="Note">`:''}
     </div></section>`;
   }
@@ -1030,8 +1044,8 @@ async function importData(d){
 main.addEventListener('input',e=>{
   const t=e.target;if(!t.dataset.f&&!t.dataset.note)return;
   const x=ensureDraft(currentDay()).ex[t.closest('[data-ex]').dataset.ex];
-  if(t.dataset.note)x.note=t.value;else x.sets[+t.dataset.i][t.dataset.f]=t.value.trim();
-  if(t.dataset.f==='w'){
+  if(t.dataset.note)x.note=t.value;else if(t.dataset.d)x.sets[+t.dataset.i].drops[+t.dataset.d][t.dataset.f]=t.value.trim();else x.sets[+t.dataset.i][t.dataset.f]=t.value.trim();
+  if(t.dataset.f==='w'&&!t.dataset.d){
     const card=t.closest('[data-ex]'),last=lastFor(currentDay().exercises.find(e=>e.id===card.dataset.ex));
     card.querySelectorAll('[data-f=w]').forEach(el=>{const i=+el.dataset.i;if(i>+t.dataset.i&&x.sets[i].w==='')el.placeholder=wHint(x.sets,i,last)});
   }
@@ -1085,6 +1099,13 @@ document.addEventListener('click',async e=>{
       const n=x.sets.length+(a==='addset'?1:-1);if(n<1)return;
       x.extra=n-(ex.sets||1);ensureDraft(day);
       break;
+    }
+    case 'adddrop':case 'rmdrop':{
+      // A drop belongs to a set (the last one by default) and is saved with it, not as an extra set.
+      const x=ensureDraft(currentDay()).ex[exId];
+      if(a==='adddrop'){const s=x.sets.at(-1);(s.drops=s.drops||[]).push({w:'',r:''});afterRender=()=>main.querySelector(`[data-ex="${exId}"] [data-f=w][data-i="${x.sets.length-1}"][data-d="${s.drops.length-1}"]`)?.focus()}
+      else{const s=x.sets[+b.dataset.i];s.drops.splice(+b.dataset.d,1);if(!s.drops.length)delete s.drops}
+      syncSession();break;
     }
     case 'pickalt':{
       if(!switchAlt(exId,b.dataset.alt||null))return;
