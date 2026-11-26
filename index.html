@@ -114,6 +114,8 @@ h1.large{font-size:34px;font-weight:700;letter-spacing:.01em;margin:0;line-heigh
 /* empty */
 .empty{text-align:center;padding:56px 12px 8px}
 .tabbar[hidden]{display:none}
+.tabbar{transform:translateY(var(--vvfix,0px))}
+html.typing .tabbar{visibility:hidden}
 main:has(.gate){padding-bottom:calc(env(safe-area-inset-bottom) + 12px)}
 .gate{min-height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 20px);display:flex;flex-direction:column;max-width:400px;margin:0 auto;padding:6vh 4px 0}
 .gate-top{text-align:center}
@@ -1252,7 +1254,19 @@ if(location.hash.startsWith('#import=')){
 }
 applyTheme();
 navigator.storage?.persist?.();
-document.addEventListener('visibilitychange',()=>{if(document.hidden)pushNow();else{render();pull()}});
+// iOS home screen apps can leave fixed bars stranded mid screen after the keyboard closes.
+// Hide the tab bar while typing and pin it to the visible bottom edge otherwise.
+function pinBar(){
+  const v=window.visualViewport,typing=!!document.activeElement?.matches?.('input,textarea,select');
+  document.documentElement.classList.toggle('typing',typing);
+  const d=v&&!typing?Math.round(v.offsetTop+v.height-innerHeight):0;
+  document.documentElement.style.setProperty('--vvfix',(Math.abs(d)>2?d:0)+'px');
+}
+document.addEventListener('focusin',pinBar);
+document.addEventListener('focusout',()=>{setTimeout(()=>{pinBar();if(!document.activeElement?.matches?.('input,textarea,select'))window.scrollTo(window.scrollX,window.scrollY)},60);setTimeout(pinBar,400)});
+window.visualViewport?.addEventListener('resize',pinBar);window.visualViewport?.addEventListener('scroll',pinBar);
+addEventListener('resize',pinBar);addEventListener('scroll',pinBar,{passive:true});
+document.addEventListener('visibilitychange',()=>{pinBar();if(document.hidden)pushNow();else{render();pull()}});
 if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(r=>r.update());
 lastSaved=JSON.stringify(cloudData());
 render();
